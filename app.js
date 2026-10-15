@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '3.5.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -26,6 +26,33 @@ function suggestedOrganizer(date,excludeId=''){const candidates=rotationMembers(
 function yearCount(id,year){return stats(id,year).present+(String(year)==='2026'?n(member(id)?.historical2026Count):0);}
 
 const assertData = v => {if(!v||typeof v!=='object'||!Array.isArray(v.members)||!Array.isArray(v.meetings)||!Array.isArray(v.fines)||!Array.isArray(v.payments))throw Error('Ungültiges Datenformat.');return v;};
+function validateBackup(v){
+ assertData(v);
+ if(JSON.stringify(v).length>10*1024*1024)throw Error('Backup zu groß.');
+ for(const [name,max] of [['members',2500],['meetings',10000],['fines',30000],['payments',60000]]){
+  if(v[name].length>max)throw Error('Zu viele Einträge in '+name+'.');
+  if(!v[name].every(x=>x&&typeof x==='object'&&!Array.isArray(x)&&typeof x.id==='string'&&x.id.length>0&&x.id.length<250))throw Error('Ungültige IDs in '+name+'.');
+  if(new Set(v[name].map(x=>x.id)).size!==v[name].length)throw Error('Doppelte IDs in '+name+'.');
+ }
+ if(!v.members.every(m=>typeof m.name==='string'&&m.name.length<=150&&Number.isSafeInteger(n(m.historicalCount))&&Number.isSafeInteger(n(m.historical2026Count))))throw Error('Ungültige Mitgliederdaten.');
+ const nums=v.members.map(memberNo).filter(x=>x!==null);
+ if(new Set(nums).size!==nums.length)throw Error('Doppelte Mitgliedsnummern.');
+ if(!v.meetings.every(m=>/^\d{4}-\d{2}-\d{2}$/.test(m.date||'')&&m.attendance&&typeof m.attendance==='object'&&!Array.isArray(m.attendance)))throw Error('Ungültige Stammtische.');
+ if(!v.fines.every(f=>Number.isSafeInteger(f.amountCents)&&f.amountCents>=0&&typeof f.memberId==='string'&&typeof f.reason==='string'))throw Error('Ungültige Strafen.');
+ if(!v.payments.every(p=>Number.isSafeInteger(p.amountCents)&&p.amountCents>=0&&typeof p.fineId==='string'))throw Error('Ungültige Zahlungen.');
+ if(!v.meetings.every(m=>Object.entries(m.attendance).every(([memberId,a])=>memberId.length<250 && a && typeof a==='object' && ['present','absent'].includes(a.status) && String(a.reason||'').length<=150 && String(a.note||'').length<=300)))throw Error('Ungültige Anwesenheiten.');
+ const centsOk=x=>Number.isSafeInteger(x)&&Math.abs(x)<1e12;
+ if(!v.fines.every(f=>centsOk(f.amountCents) && String(f.reason).length<=600))throw Error('Ungültige Strafbeträge.');
+ if(!v.payments.every(p=>centsOk(p.amountCents)))throw Error('Ungültige Zahlungsbeträge.');
+ if(v.cashbook){
+  const c=v.cashbook;
+  if(!Array.isArray(c.transactions)||!Array.isArray(c.excludedPaymentIds)||c.transactions.length>12000)throw Error('Ungültiges Kassenbuch.');
+  if(!centsOk(c.openingBalanceCents||0)||!centsOk(c.monthlyAmountCents||0))throw Error('Ungültige Kassenbeträge.');
+  if(!c.transactions.every(t=>t&&typeof t==='object'&&typeof t.id==='string'&&t.id.length<250&&centsOk(t.amountCents)))throw Error('Ungültige Kassenbuchung.');
+ }
+ return structuredClone(v);
+}
+
 function loadData(){try{const raw=localStorage.getItem(DATA_KEY);return raw?assertData(JSON.parse(raw)):DEFAULT();}catch(err){alert('Gespeicherte Daten konnten nicht geladen werden. Bitte keine neuen Daten speichern, bevor eine Sicherung geprüft wurde.');return DEFAULT();}}
 let data=loadData(), page='home', rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
 let snapshotStatus='Noch keine automatische lokale Sicherung', snapshotCount=0, snapshotError=false;
@@ -34,7 +61,7 @@ function openSnapshotDB(){return new Promise((resolve,reject)=>{if(!('indexedDB'
 async function readSnapshots(){const db=await openSnapshotDB();try{return await new Promise((resolve,reject)=>{const tx=db.transaction(SNAP_STORE,'readonly');const r=tx.objectStore(SNAP_STORE).getAll();r.onsuccess=()=>resolve(r.result.sort((a,b)=>b.id-a.id));r.onerror=()=>reject(r.error);});}finally{db.close();}}
 async function putSnapshot(payload){const copy=JSON.parse(JSON.stringify(assertData(payload)));const db=await openSnapshotDB();try{const saved=await new Promise((resolve,reject)=>{const tx=db.transaction(SNAP_STORE,'readwrite');const store=tx.objectStore(SNAP_STORE);const entry={id:Date.now()*1000+Math.floor(Math.random()*1000),savedAt:new Date().toISOString(),data:copy};store.put(entry);tx.oncomplete=()=>resolve(entry);tx.onerror=()=>reject(tx.error||Error('Lokale Sicherung fehlgeschlagen.'));tx.onabort=()=>reject(tx.error||Error('Lokale Sicherung abgebrochen.'));});const versions=await readSnapshots();if(versions.length>SNAP_LIMIT){await new Promise((resolve,reject)=>{const tx=db.transaction(SNAP_STORE,'readwrite');const store=tx.objectStore(SNAP_STORE);versions.slice(SNAP_LIMIT).forEach(x=>store.delete(x.id));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}snapshotCount=Math.min(versions.length,SNAP_LIMIT);snapshotStatus='Letzter Sicherungsstand: '+new Date(saved.savedAt).toLocaleString('de-AT');snapshotError=false;return saved;}finally{db.close();}}
 function queueSnapshot(payload){const captured=JSON.parse(JSON.stringify(payload));snapshotWriteQueue=snapshotWriteQueue.catch(()=>{}).then(()=>putSnapshot(captured)).catch(e=>{snapshotError=true;snapshotStatus='Lokale Sicherung fehlgeschlagen: '+(e.message||String(e));console.warn(snapshotStatus);});return snapshotWriteQueue;}
-function persist(){ensureCashbook(data);data.modifiedAt=new Date().toISOString();const serialized=JSON.stringify(data);try{localStorage.setItem(DATA_KEY,serialized);}catch(e){alert('Speichern fehlgeschlagen. Bitte exportiere deine Daten als JSON und prüfe den Gerätespeicher.');throw e;}queueSnapshot(data);render();queueSync();}
+function persist(){ensureCashbook(data);data.modifiedAt=new Date().toISOString();const serialized=JSON.stringify(data);try{localStorage.setItem(DATA_KEY,serialized);}catch(e){alert('Speichern fehlgeschlagen. Bitte exportiere deine Daten als JSON und prüfe den Gerätespeicher.');throw e;}queueSnapshot(data);markCloudDirty();render();queueSync();}
 function doneMeeting(m){return m.date<=today();}
 const DASHBOARD_MEETING_START = 150;
 function calendarDaysUntil(date){if(!date)return null;const [y,m,d]=date.split('-').map(Number),[ty,tm,td]=today().split('-').map(Number);return Math.max(0,Math.round((Date.UTC(y,m-1,d)-Date.UTC(ty,tm-1,td))/86400000));}
@@ -141,10 +168,16 @@ function saveCashBalance(fd){const target=signedMoneyToCents(fd.get('balance'));
 function saveCashExpense(fd){const amount=moneyToCents(fd.get('amount')),note=String(fd.get('note')||'').trim();if(!Number.isSafeInteger(amount)||amount<=0||!note)return alert('Betrag und Verwendungszweck eingeben.');cash().transactions.push({id:uid(),type:'expense',date:today(),amountCents:-amount,note});closeModal();persist();}
 function saveCashSettings(fd){const amount=moneyToCents(fd.get('amount')),startMonth=String(fd.get('startMonth')||'');if(!Number.isSafeInteger(amount)||amount<0||!monthOK(startMonth))return alert('Gültigen Beitrag und Startmonat eingeben.');const c=cash();c.monthlyAmountCents=amount;c.monthlyStartMonth=startMonth;closeModal();persist();postMonthlyContributions();}
 function settingsHTML(){
- const cfg=getCloudConfig(),sync=cloudStatus==='connected'?`<span class="chip">Verbunden</span>`:cloudStatus==='error'?`<span class="chip red">Fehler</span>`:`<span class="chip gray">Lokal</span>`;
+ const cfg=getCloudConfig();const active=cloudReady&&cloudUser;
+ const sync=active?`<span class="chip">Administrator</span>`:cloudStatus==='error'?`<span class="chip red">Fehler</span>`:`<span class="chip gray">Lokal</span>`;
  return `${pageHead('','Mehr','')}<section class="card"><div class="row"><h2>FantastiX</h2><span class="version-tag">Version ${APP_VERSION}</span></div></section>
- <section class="card"><div class="row"><h2>Cloud</h2>${sync}</div><div class="stack"><button class="button" data-action="cloud-setup">${cfg?'Cloud verwalten':'Cloud einrichten'}</button>${cloudUser?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}</div></section>
- <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button><label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
+ <section class="card"><div class="row"><h2>Cloud & öffentlicher Link</h2>${sync}</div>
+ <p class="hint">${esc(syncMessage)}</p>
+ <div class="stack"><button class="button" data-action="cloud-setup">${cloudUser?'Cloud & Freigaben':'Als Administrator anmelden'}</button>
+ ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
+ <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Öffentliche Leseansicht ↗</a></div></section>
+ <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
+ <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
 }
 function modal(title,html){$('#dialog').innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${title}</h2><button type="button" class="close" data-action="close" aria-label="Schließen">×</button></div>${html}</div>`;$('#dialog').showModal();}
 const footer = (label='Speichern')=>`<div class="foot"><button type="button" class="ghost" data-action="close">Abbrechen</button><button class="button" type="submit">${label}</button></div>`;
@@ -249,22 +282,190 @@ function download(content,name,mime){const blob=new Blob([content],{type:mime});
 function exportJSON(){download(JSON.stringify(data,null,2),`FantastiX_Backup_${today()}.json`,'application/json;charset=utf-8');}
 async function shareJSON(){const filename=`FantastiX_Backup_${today()}.json`;const file=new File([JSON.stringify(data,null,2)],filename,{type:'application/json'});try{if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:'FantastiX Datensicherung'});return;}exportJSON();alert('Dein Browser hat die Sicherung heruntergeladen. Bitte speichere sie über die Dateien-App manuell unter iCloud Drive.');}catch(e){if(e.name!=='AbortError')alert('Teilen fehlgeschlagen: '+(e.message||String(e)));}}
 async function snapshotList(){try{await snapshotWriteQueue;const versions=await readSnapshots();if(!versions.length)return alert('Noch keine Sicherungsstände vorhanden. Speichere zuerst eine Änderung in der App.');modal('Lokale Sicherungsstände',`<div class="notice warning">Diese Versionen liegen nur im Browser. Bei einer Wiederherstellung wird der aktuelle Datenstand ersetzt. Exportiere zur Sicherheit vorher eine JSON-Datei.</div><div class="stack" style="margin-top:12px"><button class="ghost" data-action="export-json">↓ Aktuelle Daten sichern</button>${versions.map((v,i)=>`<button class="ghost" data-action="snapshot-restore" data-snapshot="${v.id}">${new Date(v.savedAt).toLocaleString('de-AT')} · ${v.data.members.length} Mitglieder · ${v.data.meetings.length} Stammtische</button>`).join('')}</div>`);}catch(e){alert('Sicherungsstände konnten nicht gelesen werden: '+(e.message||String(e)));}}
-async function snapshotRestore(id){try{await snapshotWriteQueue;const versions=await readSnapshots();const v=versions.find(x=>x.id===Number(id));if(!v)return alert('Sicherungsstand nicht mehr vorhanden.');if(!confirm('Alle aktuellen Daten durch den Stand vom '+new Date(v.savedAt).toLocaleString('de-AT')+' ersetzen?'))return;await queueSnapshot(data);data=assertData(structuredClone(v.data));ensureCashbook(data);closeModal();persist();postMonthlyContributions();if(cloudUser){localStorage.removeItem(BASELINE_KEY);await syncCloud();}alert('Sicherungsstand lokal wiederhergestellt. Bitte Cloud-Konflikte ggf. prüfen.');}catch(e){alert('Wiederherstellen fehlgeschlagen: '+(e.message||String(e)));}}
+async function snapshotRestore(id){try{await snapshotWriteQueue;const versions=await readSnapshots();const v=versions.find(x=>x.id===Number(id));if(!v)return alert('Sicherungsstand nicht mehr vorhanden.');if(!confirm('Alle aktuellen Daten durch den Stand vom '+new Date(v.savedAt).toLocaleString('de-AT')+' ersetzen?'))return;await queueSnapshot(data);data=assertData(structuredClone(v.data));ensureCashbook(data);closeModal();persist();postMonthlyContributions();if(cloudUser&&cloudReady)queueSync();alert('Sicherungsstand lokal wiederhergestellt. Bitte Cloud-Konflikte ggf. prüfen.');}catch(e){alert('Wiederherstellen fehlgeschlagen: '+(e.message||String(e)));}}
 
-/* Optionale persönliche Cloud: Supabase Auth + RLS-geschützter JSON-Datensatz */
-const getCloudConfig=()=>{try{return JSON.parse(localStorage.getItem(CLOUD_KEY)||'null')}catch{return null}};
-let pendingRemote=null;
-async function initCloudClient(){const cfg=getCloudConfig();if(!cfg?.url||!cfg?.key)throw Error('Bitte zunächst Cloud-URL und Publishable Key eintragen.');if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(cfg.url.trim()))throw Error('Ungültige Supabase-Projekt-URL.');const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2');cloudClient=createClient(cfg.url.trim().replace(/\/$/,''),cfg.key.trim(),{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});return cloudClient;}
-function cloudForm(){const cfg=getCloudConfig()||{};modal('Cloud',`<form data-form="cloud-config"><div class="field"><label>Supabase-URL</label><input type="url" name="url" value="${esc(cfg.url||'')}" placeholder="https://deinprojekt.supabase.co" required></div><div class="field"><label>Anon Key</label><input name="key" value="${esc(cfg.key||'')}" placeholder="sb_publishable_…" required></div>${footer('Speichern')}</form>${cfg.url?`<div class="separator"></div>${cloudUser?`<div class="notice">Angemeldet: ${esc(cloudUser.email||'')}</div><div class="toolbar"><button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button><button class="danger-btn" data-action="cloud-logout">Abmelden</button></div>`:`<form data-form="cloud-auth"><div class="field"><label>E-Mail</label><input type="email" name="email" required autocomplete="email"></div><div class="field"><label>Passwort</label><input type="password" name="password" required minlength="6" autocomplete="current-password"></div><div class="stack"><button class="button" type="submit" name="mode" value="login">Anmelden</button><button class="ghost" type="submit" name="mode" value="signup">Konto erstellen</button></div></form>`}`:''}`);}
-async function connectCloud(silent=true){if(cloudBusy)return;cloudBusy=true;try{await initCloudClient();const {data:auth,error}=await cloudClient.auth.getSession();if(error)throw error;cloudUser=auth.session?.user||null;if(cloudUser)await syncCloud(true);else {cloudStatus='local';syncMessage='Cloud konfiguriert, bitte anmelden';}}catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Verbindung: '+syncMessage);}finally{cloudBusy=false;render();}}
-async function cloudAuth(fd,mode){if(!cloudClient){try{await initCloudClient()}catch(e){alert(e.message);return;}}const email=String(fd.get('email')||'').trim(),password=String(fd.get('password')||'');try{const auth=mode==='signup'?await cloudClient.auth.signUp({email,password}):await cloudClient.auth.signInWithPassword({email,password});if(auth.error)throw auth.error;if(!auth.data.session){alert('Registrierung durchgeführt. Bitte bestätige gegebenenfalls deine E-Mail und melde dich danach an.');return;}cloudUser=auth.data.user;cloudStatus='connected';closeModal();await syncCloud(true);render();}catch(e){alert('Anmeldung fehlgeschlagen: '+e.message);}}
-async function cloudUpload(){if(!cloudClient||!cloudUser)return;const {error}=await cloudClient.from('stammtisch_documents').upsert({owner_id:cloudUser.id,content:data,updated_at:new Date().toISOString()},{onConflict:'owner_id'});if(error)throw error;localStorage.setItem(BASELINE_KEY,data.modifiedAt);cloudStatus='connected';syncMessage='Synchronisiert am '+new Date().toLocaleString('de-AT');}
-function adoptCloud(d){queueSnapshot(data);data=assertData(structuredClone(d));ensureCashbook(data);localStorage.setItem(DATA_KEY,JSON.stringify(data));queueSnapshot(data);localStorage.setItem(BASELINE_KEY,data.modifiedAt);cloudStatus='connected';syncMessage='Cloud-Daten übernommen';render();postMonthlyContributions();}
-const hasData=d=>!!(d.members.length||d.meetings.length||d.fines.length||d.payments.length||d.cashbook?.transactions?.length||d.cashbook?.openingBalanceCents);
-async function syncCloud(fromConnect=false){if(!cloudClient||!cloudUser||!navigator.onLine){if(!navigator.onLine){syncMessage='Offline – Änderungen bleiben lokal gespeichert';render();}return;}try{const {data:record,error}=await cloudClient.from('stammtisch_documents').select('content').eq('owner_id',cloudUser.id).maybeSingle();if(error)throw error;const remote=record?.content;if(!remote){await cloudUpload();render();return;}assertData(remote);const baseline=localStorage.getItem(BASELINE_KEY);if(!baseline){if(!hasData(data)){adoptCloud(remote);return;}if(!hasData(remote)){await cloudUpload();render();return;}if(data.modifiedAt===remote.modifiedAt){localStorage.setItem(BASELINE_KEY,data.modifiedAt);cloudStatus='connected';render();return;}pendingRemote=remote;conflictModal('Auf diesem iPhone und in der Cloud liegen Daten. Welche Version möchtest du behalten?');return;}const localChanged=data.modifiedAt!==baseline,remoteChanged=remote.modifiedAt!==baseline;
- if(remoteChanged&&localChanged&&remote.modifiedAt!==data.modifiedAt){pendingRemote=remote;conflictModal('Die Daten wurden auf zwei Geräten geändert. Bitte wähle bewusst, welche Version bleiben soll.');return;}if(remoteChanged&&!localChanged){adoptCloud(remote);return;}if(localChanged&&!remoteChanged){await cloudUpload();render();return;}cloudStatus='connected';syncMessage='Alle Änderungen synchronisiert';render();}catch(e){cloudStatus='error';syncMessage=e.message||String(e);render();if(!fromConnect)alert('Cloud-Sync fehlgeschlagen: '+syncMessage);}}
-function conflictModal(info){modal('Cloud-Daten auswählen',`<div class="notice warning">${esc(info)} Eine Auswahl ersetzt die andere Version. Vorher am besten ein JSON-Backup exportieren.</div><div class="stack" style="margin-top:16px"><button class="ghost" data-action="export-json">↓ Erst ein JSON-Backup herunterladen</button><button class="button" data-action="cloud-download">Cloud-Daten auf dieses iPhone laden</button><button class="danger-btn" data-action="cloud-upload">Lokale Daten in die Cloud hochladen</button></div>`);}
-function queueSync(){if(!cloudUser)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncCloud(),1200);}
+/* FantastiX 3.5 – geschützte Administrator-Cloud mit expliziter öffentlicher Veröffentlichung */
+const CLOUD_REV_KEY = 'fantastix.cloud.v35.revision';
+const CLOUD_CONTEXT_KEY = 'fantastix.cloud.v35.context';
+const CLOUD_DIRTY_KEY = 'fantastix.cloud.v35.dirty';
+const PUBLIC_SETTINGS_KEY = 'fantastix.public.v35.settings';
+let cloudRevision = null, cloudReady = false, cloudDirty = localStorage.getItem(CLOUD_DIRTY_KEY) === '1';
+let cloudSaving = false, pendingRemote = null, publishing = false, publicPublished = false;
+const getCloudConfig = () => {
+ const cfg = window.FANTASTIX_CLOUD;
+ if (!cfg || !/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(String(cfg.url||'').trim()) ||
+     !/^sb_publishable_[\w-]{15,}$|^eyJ[A-Za-z0-9._-]{40,}$/.test(String(cfg.key||'').trim())) return null;
+ return {url:cfg.url.trim().replace(/\/$/,''),key:cfg.key.trim()};
+};
+const publicSettings = () => {
+ const defaults = {members:true, meetings:true, absences:false, fines:false, cash:false, auto:false};
+ try {return {...defaults,...JSON.parse(localStorage.getItem(PUBLIC_SETTINGS_KEY)||'{}')};}
+ catch{return defaults;}
+};
+const savePublicSettings = opts => localStorage.setItem(PUBLIC_SETTINGS_KEY,JSON.stringify(opts));
+const activeCloudContext=()=>cloudUser&&getCloudConfig()?getCloudConfig().url+'|'+cloudUser.id:'';
+const hasData = d => !!(d.members?.length||d.meetings?.length||d.fines?.length||d.payments?.length||d.cashbook?.transactions?.length||d.cashbook?.openingBalanceCents);
+function markCloudDirty(){cloudDirty=true;localStorage.setItem(CLOUD_DIRTY_KEY,'1');}
+function markCloudClean(revision){cloudDirty=false;cloudRevision=revision;localStorage.setItem(CLOUD_DIRTY_KEY,'0');localStorage.setItem(CLOUD_REV_KEY,String(revision));localStorage.setItem(CLOUD_CONTEXT_KEY,activeCloudContext());}
+function cloudForm(){
+ const cfg=getCloudConfig();
+ if(!cfg)return modal('Cloud einrichten',`<div class="notice warning">Trage deine Supabase-Projekt-URL und deinen Publishable Key in <strong>cloud-config.js</strong> ein und lade die Datei auf GitHub Pages hoch. Die Schritte stehen in ANLEITUNG.txt.</div><button class="ghost" data-action="close">Schließen</button>`);
+ if(!cloudUser)return modal('Administrator-Anmeldung',`<form data-form="cloud-auth"><div class="field"><label>E-Mail</label><input type="email" name="email" autocomplete="username" required></div><div class="field"><label>Passwort</label><input type="password" name="password" autocomplete="current-password" minlength="6" required></div>${footer('Anmelden')}</form>`);
+ const opts=publicSettings();
+ modal('Cloud & Freigaben',`<div class="notice ${cloudReady?'':'warning'}">${esc(syncMessage)}</div>
+  <div class="stack" style="margin:14px 0"><button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>
+   ${!cloudReady?`<button class="button" data-action="cloud-choose">Datenbestand auswählen</button>`:''}
+   <button class="ghost" data-action="cloud-logout">Administrator abmelden</button></div>
+  <div class="separator"></div><h3>Öffentlicher Leselink</h3>
+  <p class="hint">Freigegebene Inhalte sind für jeden mit Internetzugang lesbar – ohne Anmeldung.</p>
+  <form data-form="public-settings">
+   ${[['members','Mitglieder & Ranglisten'],['meetings','Stammtische & Anwesenheiten'],['absences','Abwesenheitsgründe & Notizen'],['fines','Strafen & Zahlungen'],['cash','Kontostand & Kassenbuch']].map(([k,label])=>`<div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="${k}" ${opts[k]?'checked':''}>${label}</label></div>`).join('')}
+   <div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="auto" ${opts.auto?'checked':''}>Nach Änderungen automatisch neu veröffentlichen</label></div>
+   <div class="notice warning">Strafen, Zahlungsdaten und Abwesenheitsgründe sind möglicherweise personenbezogen oder sensibel. Mit der Freigabe können sie weltweit abgerufen werden. Kläre die Zustimmung der Betroffenen vor der Veröffentlichung.</div>
+   <div class="stack" style="margin-top:13px"><button class="button" type="submit">Auswahl speichern & veröffentlichen</button><button class="ghost" type="button" data-action="cloud-unpublish">Öffentliche Ansicht abschalten</button></div>
+  </form>
+  <div class="separator"></div><a class="button" href="./lesen.html" target="_blank" rel="noopener">Öffentliche Ansicht öffnen ↗</a>`);
+}
+async function initCloudClient(){
+ const cfg=getCloudConfig();if(!cfg)throw Error('cloud-config.js muss zuerst mit Supabase-Projektdaten eingerichtet werden.');
+ if(cloudClient)return cloudClient;
+ const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.57.0');
+ cloudClient=createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+ return cloudClient;
+}
+async function readRemote(){
+ if(!cloudClient)throw Error('Keine Cloud-Verbindung.');
+ const {data:remote,error}=await cloudClient.from('fantastix_private').select('content,revision,updated_at').eq('id','main').maybeSingle();
+ if(error)throw error;
+ if(!remote)throw Error('Keine Administratorberechtigung oder die SQL-Einrichtung fehlt.');
+ assertData(remote.content);return remote;
+}
+async function readPublication(){
+ const {data:rec,error}=await cloudClient.from('fantastix_public').select('is_published,published_at').eq('id','main').maybeSingle();
+ if(error)throw error;publicPublished=rec?.is_published===true;return publicPublished;
+}
+async function connectCloud(silent=true){
+ if(cloudBusy)return;cloudBusy=true;
+ try{
+  await initCloudClient();
+  const {data:auth,error}=await cloudClient.auth.getUser();if(error && !/Auth session missing/i.test(error.message))throw error;
+  cloudUser=auth?.user||null;
+  if(cloudUser)await syncCloud(true);
+  else {cloudReady=false;cloudStatus='local';syncMessage='Nicht angemeldet';}
+ }catch(e){cloudReady=false;cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud: '+syncMessage);}
+ finally{cloudBusy=false;render();}
+}
+async function cloudAuth(fd){
+ try{
+  await initCloudClient();
+  const {error}=await cloudClient.auth.signInWithPassword({email:String(fd.get('email')||'').trim(),password:String(fd.get('password')||'')});
+  if(error)throw error;
+  const {data:verified,error:whoError}=await cloudClient.auth.getUser();if(whoError)throw whoError;
+  cloudUser=verified.user;
+  await readRemote(); // RLS überprüft die Administratorberechtigung serverseitig.
+  closeModal();await syncCloud(true);render();
+ }catch(e){cloudUser=null;cloudReady=false;cloudStatus='error';syncMessage=e.message||String(e);alert('Anmeldung abgelehnt: '+syncMessage);}
+}
+function adoptCloud(remote){
+ const payload=assertData(structuredClone(remote.content));
+ queueSnapshot(data);data=payload;ensureCashbook(data);
+ localStorage.setItem(DATA_KEY,JSON.stringify(data));queueSnapshot(data);
+ markCloudClean(remote.revision);cloudReady=true;cloudStatus='connected';syncMessage='Cloud-Daten geladen';render();
+ postMonthlyContributions();
+}
+function cloudChooseModal(remote,reason){
+ pendingRemote=remote;cloudReady=false;cloudStatus='warning';syncMessage='Datenbestand auswählen';
+ modal('Datenstand auswählen',`<div class="notice warning">${esc(reason)} Behalte vorher eine JSON-Sicherung.</div>
+ <div class="stack" style="margin-top:14px"><button class="ghost" data-action="export-json">JSON-Sicherung herunterladen</button>
+ <button class="button" data-action="cloud-download">Cloud-Daten übernehmen</button>
+ <button class="danger-btn" data-action="cloud-upload">Lokale Daten als neuen Cloud-Stand speichern</button></div>`);
+}
+async function syncCloud(silent=false){
+ if(!cloudUser||!cloudClient||!navigator.onLine||cloudSaving)return;
+ try{
+  const remote=await readRemote();
+  const previous=localStorage.getItem(CLOUD_CONTEXT_KEY)===activeCloudContext()?localStorage.getItem(CLOUD_REV_KEY):null;
+  if(!cloudReady){
+   if(previous!==null && Number(previous)===Number(remote.revision)){
+    cloudRevision=remote.revision;cloudReady=true;cloudStatus='connected';syncMessage='Cloud verbunden';
+    if(cloudDirty)queueSync();
+   } else if(!hasData(data)){
+    adoptCloud(remote);
+   } else if(!hasData(remote.content) && !cloudDirty && previous!==null){
+    cloudChooseModal(remote,'Die Cloud ist leer. Soll dein lokaler Datenstand hochgeladen werden?');
+   } else {
+    cloudChooseModal(remote,'Es liegen lokale Daten und ein Cloud-Datenbestand vor. Bitte wähle bewusst einen Stand aus.');
+   }
+  }else if(Number(remote.revision)!==Number(cloudRevision)){
+   if(cloudDirty)cloudChooseModal(remote,'Die Cloud wurde anderswo geändert und lokal liegen weitere Änderungen vor.');
+   else adoptCloud(remote);
+  }else if(cloudDirty){queueSync();}
+  else{cloudStatus='connected';syncMessage='Synchronisiert';}
+  await readPublication();
+ }catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Synchronisierung: '+syncMessage);}
+ render();
+}
+async function cloudUpload(force=false){
+ if(!cloudClient||!cloudUser||!navigator.onLine)throw Error('Keine Internetverbindung oder keine Administratoranmeldung.');
+ if(cloudSaving)return;
+ if(!cloudReady&&!force)throw Error('Bitte zuerst einen Datenbestand auswählen.');
+ cloudSaving=true;
+ try{
+  let expected=cloudRevision;
+  if(force){const r=await readRemote();expected=r.revision;}
+  const snapshot=structuredClone(data);
+  const {data:rows,error}=await cloudClient.from('fantastix_private')
+   .update({content:snapshot,revision:expected+1,updated_at:new Date().toISOString()})
+   .eq('id','main').eq('revision',expected).select('revision');
+  if(error)throw error;
+  if(!rows||rows.length!==1){const fresh=await readRemote();cloudChooseModal(fresh,'Ein anderer Cloud-Stand wurde inzwischen gespeichert.');throw Error('Cloud-Konflikt. Daten bitte bewusst abgleichen.');}
+  cloudRevision=rows[0].revision;cloudReady=true;cloudStatus='connected';syncMessage='Gesichert · '+new Date().toLocaleTimeString('de-AT');
+  const unchanged=data.modifiedAt===snapshot.modifiedAt && JSON.stringify(data)===JSON.stringify(snapshot);
+  if(unchanged){markCloudClean(cloudRevision);if(publicSettings().auto && publicPublished)await publishPublic(false);}
+  else{markCloudDirty();queueSync();}
+  return true;
+ }finally{cloudSaving=false;render();}
+}
+function queueSync(){
+ if(!cloudUser||!cloudReady)return;
+ clearTimeout(syncTimer);
+ syncTimer=setTimeout(()=>cloudUpload().catch(e=>{cloudStatus='error';syncMessage=e.message||String(e);render();}),1100);
+}
+function publicSnapshot(opts){
+ const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
+ const members=allowMembers?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)})):[];
+ const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,attendance:Object.fromEntries(Object.entries(m.attendance||{}).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||''}:{status:v.status}]))})):[];
+ const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
+ const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
+ const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
+ return {schemaVersion:1,publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,fines,payments,cashbook};
+}
+async function publishPublic(ask=true){
+ if(publishing)return;
+ if(!cloudReady||!cloudUser)throw Error('Zuerst als Administrator verbinden und synchronisieren.');
+ const opts=publicSettings();
+ if(!opts.members&&!opts.meetings&&!opts.fines&&!opts.cash)throw Error('Bitte mindestens einen Bereich freigeben.');
+ if(ask && !confirm('Diese ausgewählten Daten werden OHNE ANMELDUNG weltweit lesbar. Bei aktivierten Strafen oder Abwesenheitsgründen können personenbezogene Daten enthalten sein. Wirklich veröffentlichen?'))return;
+ publishing=true;
+ try{
+  if(cloudDirty){await cloudUpload();if(cloudDirty)throw Error('Bitte zuerst den Cloud-Konflikt klären.');}
+  const doc=publicSnapshot(opts);
+  const {data:rows,error}=await cloudClient.from('fantastix_public')
+   .update({content:doc,is_published:true,published_at:doc.publishedAt})
+   .eq('id','main').select('is_published');
+  if(error)throw error;
+  if(!rows||rows.length!==1)throw Error('Keine Berechtigung zum Veröffentlichen.');
+  publicPublished=true;syncMessage='Öffentliche Ansicht aktualisiert';render();
+ }finally{publishing=false;}
+}
+async function unpublishPublic(){
+ if(!cloudReady)throw Error('Bitte Administrator anmelden.');
+ if(!confirm('Öffentlichen Leselink deaktivieren? Die bisherigen Daten bleiben privat gespeichert.'))return;
+ const {data:rows,error}=await cloudClient.from('fantastix_public').update({is_published:false,published_at:null}).eq('id','main').select('is_published');
+ if(error)throw error;if(!rows||rows.length!==1)throw Error('Keine Administratorberechtigung.');
+ publicPublished=false;const opts=publicSettings();opts.auto=false;savePublicSettings(opts);syncMessage='Öffentliche Ansicht deaktiviert';render();
+}
+
 
 /* Interaktionen */
 document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
@@ -273,13 +474,38 @@ document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-a
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();}break;}
  case'payment-delete':{const p=data.payments.find(x=>x.id===id);if(p&&confirm('Diese Zahlung stornieren? Der Betrag wird wieder offen.')){const fid=p.fineId;data.payments=data.payments.filter(x=>x.id!==id);closeModal();persist();fineView(fid);}break;}
  case'fine-delete':{const f=data.fines.find(x=>x.id===id);if(f&&!finePaid(f.id)&&confirm('Diese noch unbezahlte Strafe löschen?')){data.fines=data.fines.filter(x=>x.id!==id);closeModal();persist();}break;}
- case'cloud-setup':cloudForm();break;case'cloud-check':closeModal();await syncCloud();break;case'cloud-download':if(pendingRemote&&confirm('Lokale Daten durch die Cloud-Version ersetzen?')){adoptCloud(pendingRemote);pendingRemote=null;closeModal();}break;
- case'cloud-upload':if(confirm('Cloud-Daten durch die lokale Version ersetzen?')){try{await cloudUpload();pendingRemote=null;closeModal();render();}catch(e){alert('Cloud-Upload fehlgeschlagen: '+e.message)}}break;
- case'cloud-logout':if(cloudClient&&confirm('Von der Cloud abmelden? Lokale Daten bleiben auf diesem iPhone.')){await cloudClient.auth.signOut();cloudUser=null;cloudStatus='local';syncMessage='Cloud abgemeldet';closeModal();render();}break;
+ case'cloud-setup':cloudForm();break;
+ case'cloud-check':closeModal();await syncCloud();break;
+ case'cloud-choose':closeModal();await syncCloud();break;
+ case'cloud-download':if(pendingRemote&&confirm('Lokale Daten durch den Cloud-Stand ersetzen? Vorher JSON sichern!')){adoptCloud(pendingRemote);pendingRemote=null;closeModal();}break;
+ case'cloud-upload':if(confirm('Lokale Daten als Cloud-Stand speichern? Der vorherige Cloud-Stand wird ersetzt.')){try{await cloudUpload(true);pendingRemote=null;closeModal();render();}catch(e){alert('Upload fehlgeschlagen: '+e.message)}}break;
+ case'cloud-unpublish':try{await unpublishPublic();closeModal();cloudForm();}catch(e){alert(e.message);}break;
+ case'cloud-logout':if(cloudClient&&confirm('Administrator abmelden? Lokale Daten bleiben auf diesem Gerät.')){await cloudClient.auth.signOut();cloudUser=null;cloudReady=false;cloudStatus='local';syncMessage='Abgemeldet';closeModal();render();}break;
  }
 });
-$('#dialog').addEventListener('submit',async ev=>{ev.preventDefault();const form=ev.target,fd=new FormData(form);switch(form.dataset.form){case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-config':{const cfg={url:String(fd.get('url')||'').trim().replace(/\/$/,''),key:String(fd.get('key')||'').trim()};if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(cfg.url))return alert('Bitte eine gültige https://…supabase.co Projekt-URL eingeben.');if(cfg.key.length<20)return alert('Bitte einen gültigen Publishable / anon Key eingeben.');const old=getCloudConfig();if(old?.url!==cfg.url||old?.key!==cfg.key){localStorage.removeItem(BASELINE_KEY);cloudClient=null;cloudUser=null;}localStorage.setItem(CLOUD_KEY,JSON.stringify(cfg));closeModal();await connectCloud(false);cloudForm();break;}case'cloud-auth':{const submitter=ev.submitter;await cloudAuth(fd,submitter?.value||'login');break;}}});
-document.addEventListener('change',async e=>{const t=e.target;if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;const file=e.target.files?.[0];if(!file)return;try{const obj=assertData(JSON.parse(await file.text()));if(!confirm('Alle aktuellen Daten durch dieses Backup ersetzen? Vorher am besten selbst ein Backup herunterladen.'))return;await queueSnapshot(data);data=obj;ensureCashbook(data);localStorage.removeItem(BASELINE_KEY);persist();postMonthlyContributions();if(cloudUser)await syncCloud();alert('Backup wiederhergestellt.');}catch(err){alert('Import nicht möglich: '+err.message)}});
+$('#dialog').addEventListener('submit',async ev=>{ev.preventDefault();const form=ev.target,fd=new FormData(form);switch(form.dataset.form){case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-auth':await cloudAuth(fd);break;
+ case'public-settings':{
+  const opts={members:fd.has('members'),meetings:fd.has('meetings'),absences:fd.has('absences')&&fd.has('meetings'),fines:fd.has('fines'),cash:fd.has('cash'),auto:fd.has('auto')};
+  if(!opts.members&&!opts.meetings&&!opts.fines&&!opts.cash){alert('Bitte mindestens einen Datenbereich auswählen.');break;}
+  if(!cloudReady){alert('Bitte zuerst mit der Cloud synchronisieren.');break;}
+  if(!confirm('Achtung: Alle ausgewählten Inhalte sind danach weltweit OHNE ANMELDUNG lesbar. Das kann Namen, Abwesenheitsgründe, Strafen und Zahlungen umfassen. Wirklich freigeben?'))break;
+  savePublicSettings(opts);
+  try{await publishPublic(false);closeModal();alert('Öffentliche Ansicht aktualisiert.');}
+  catch(e){alert('Veröffentlichen fehlgeschlagen: '+e.message);}
+  break;
+ }}});
+document.addEventListener('change',async e=>{const t=e.target;if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  if(file.size>10*1024*1024)throw Error('Die Sicherung ist größer als 10 MB.');
+  const imported=validateBackup(JSON.parse(await file.text()));
+  if(!confirm('Vorhandene Daten durch dieses JSON-Backup ersetzen? Eine neue lokale Sicherung wird vorher angelegt.'))return;
+  await queueSnapshot(data);
+  data=imported;ensureCashbook(data);
+  persist();postMonthlyContributions();
+  alert('Import abgeschlossen. Bei aktiver Cloud-Synchronisierung werden die Änderungen hochgeladen.');
+ }catch(err){alert('Import nicht möglich: '+(err.message||String(err)));}
+});
 window.addEventListener('online',()=>{if(cloudUser)syncCloud()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){postMonthlyContributions();if(cloudUser)syncCloud();}});
 if(ensureCashbook(data)){try{localStorage.setItem(DATA_KEY,JSON.stringify(data));}catch(e){console.warn('Kassa-Migration konnte nicht gesichert werden:',e);}}
