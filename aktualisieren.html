@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stammtisch+ aktualisieren</title><meta name="theme-color" content="#5b4df6"><style>
+*{box-sizing:border-box}body{font:16px system-ui,-apple-system,sans-serif;background:#f6f7ff;color:#202035;margin:0;min-height:100dvh;display:grid;place-items:center;padding:22px}.card{background:white;border-radius:22px;padding:26px;max-width:410px;width:100%;box-shadow:0 12px 40px #28227518}h1{font-size:25px;margin:0 0 8px}p{color:#5a6175;line-height:1.45}button{border:0;border-radius:13px;background:#5b4df6;color:white;font:700 16px system-ui;padding:14px 18px;width:100%;min-height:48px}small{color:#616b7a}strong{color:#4932b9}
+</style></head><body><div class="card"><h1>Stammtisch+</h1><strong>Aktualisierung auf Version 3.2.0</strong><p>Hier wird ausschließlich der App-Cache aktualisiert. Gespeicherte Mitglieder, Stammtische und Strafen werden nicht gelöscht.</p><button id="refresh">App aktualisieren</button><p id="message" role="status"><small>Deine Stammtischdaten bleiben erhalten.</small></p></div><script>
+document.getElementById('refresh').addEventListener('click',async()=>{
+const button=document.getElementById('refresh'),message=document.getElementById('message');button.disabled=true;message.textContent='Aktualisierung läuft …';
+try{
+if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.filter(r=>r.scope===new URL('./',location.href).href).map(r=>r.unregister()));}
+if('caches' in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>k.startsWith('stammtisch-plus-')).map(k=>caches.delete(k)));}
+message.textContent='Aktualisiert. Die App wird geöffnet …';
+location.replace('./?v=3.2.0&refresh='+Date.now());
+}catch(err){message.textContent='Cache konnte nicht vollständig erneuert werden: '+String(err?.message||err);button.disabled=false;}
+});
+</script></body></html>
