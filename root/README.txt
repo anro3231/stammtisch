@@ -1,95 +1,114 @@
-STAMMTISCH+ | INSTALLATION OHNE MAC
-================================
+STAMMTISCH+ v2 – GITHUB PAGES / iPHONE
+==================================
+Stand: 15.10.2026
 
-Diese Web-App läuft auf dem iPhone in Safari und lässt sich als Symbol zum Home-Bildschirm hinzufügen.
-Keine Xcode-Installation, kein Mac, kein App Store notwendig.
+NEU IN VERSION 2
+----------------
+1. Je Mitglied: historische Teilnahmen 2026 bis zum Einführungszeitpunkt
+   ('Startwert 2026') einmalig eingeben, einzeln oder für alle Mitglieder
+   auf einmal unter Mitglieder -> 2026-Startwerte erfassen.
+2. Je Mitglied: eindeutige positive Mitgliedsnummer (auch nachträglich).
+3. Neuer Stammtisch: Organisator wird automatisch vorgeschlagen. Reihenfolge:
+   Nächsthöhere Mitgliedsnummer des letzten dokumentierten Organisators;
+   nach der höchsten Nummer zurück zur kleinsten aktiven Mitgliedsnummer.
+   Die Vorauswahl ist änderbar. Mitglieder ohne Nummer und archivierte
+   Mitglieder werden bei der automatischen Vergabe übersprungen.
 
-WICHTIG: Das ZIP ist der Quellcode, keine fertig veröffentlichte Website.
-Bevor du die App über einen Link verwenden kannst, muss sie auf einem HTTPS-Webhost veröffentlicht werden.
-Ich kann die Website nicht ohne deinen Webhosting-Zugang veröffentlichen.
+WICHTIGE ZÄHLREGELN
+-------------------
+- Ewige Rangliste = alter historischer Gesamt-Startwert + alle neu erfassten
+  Teilnahmen. Der neue 2026-Startwert wird NICHT ein zweites Mal addiert.
+- Jahresrangliste 2026 = 2026-Startwert + neu in der App dokumentierte
+  abgeschlossene Treffen von 2026, bei denen das Mitglied anwesend war.
+- Andere Jahresranglisten = nur erfasste abgeschlossene Treffen dieses Jahres.
+- Trage bei '2026-Startwert' NUR 2026-Teilnahmen ein, die noch nicht einzeln
+  in dieser App dokumentiert sind.
+- Der historische Gesamt-Startwert MUSS die 2026-Startwert-Teilnahmen bereits
+  enthalten. Der 2026-Startwert darf deshalb nicht höher als der Gesamtwert sein.
+- Strafen, Abwesenheitsgründe und Organisator zählen NICHT zur Rangliste.
+- Nicht abgeschlossene oder zukünftige Stammtische zählen nicht.
 
-ANLEITUNG: OHNE MAC, NUR MIT iPHONE
----------------------------------
-1. Erstelle auf https://github.com ein Konto (falls noch keines vorhanden).
-2. Erstelle ein neues ÖFFENTLICHES Repository, z. B. "stammtisch-plus".
-3. Lade die Dateien dieser ZIP hoch. Der Inhalt des Ordners muss im Hauptverzeichnis des
-   Repositorys liegen: index.html, app.js, service-worker.js, manifest.webmanifest und icons/.
-4. Öffne Repository -> Settings -> Pages.
-5. Wähle "Deploy from a branch" -> Branch "main" -> Ordner "/ (root)" -> Save.
-6. Die URL lautet anschließend in der Regel
-   https://BENUTZERNAME.github.io/stammtisch-plus/
-7. Öffne diese URL auf dem iPhone in Safari, tippe "Teilen" ->
-   "Zum Home-Bildschirm" -> "Als Web-App öffnen" -> "Hinzufügen".
-8. Öffne die App künftig über das Symbol auf deinem Home-Bildschirm.
+UPDATE BESTEHENDER GITHUB-PAGES-INSTALLATION (empfohlen)
+--------------------------------------------------------
+0. WICHTIG: Vorher auf der bisherigen App-Seite unter Mehr ->
+   'Komplette Datensicherung (JSON)' exportieren und die Datei sicher verwahren.
+1. Wenn du die ALTE EIN-DATEI-VERSION nutzt: Die mitgelieferte Datei
+   'EIN_DATEI_INDEX.html' in 'index.html' umbenennen und die vorhandene
+   'index.html' im bisherigen GitHub-Repository ersetzen.
+   Noch einfacher ist die separate ZIP nur mit einer Datei (index.html).
+2. Wenn du die VOLLSTÄNDIGE WEB-APP nutzt: Im bisherigen Repository die
+   Dateien aus diesem Paket aktualisieren (insbesondere app.js,
+   index.html, service-worker.js, manifest.webmanifest und icons/).
+3. Auf derselben GitHub-Pages-Adresse in Safari neu laden. Bei einer
+   installierten Home-Bildschirm-Web-App ggf. schließen und erneut öffnen.
+4. Prüfe unter Mitglieder, ob alle bisherigen Daten noch vorhanden sind,
+   und ergänze Mitgliedsnummern sowie die 2026-Startwerte.
+5. Wenn keine Daten erscheinen: NICHT neu erfassen. Prüfe zuerst, ob
+   dieselbe Webadresse bzw. derselbe Browser/Speicherkontext verwendet wird.
+   Ggf. JSON-Backup über Mehr importieren.
 
-Hinweis: Auf dem iPhone kann das Hochladen mehrerer Dateien inklusive des icons-Ordners
-in GitHub unbequem sein. Nutze ggf. stattdessen die beiliegende Einzeldatei
-"EIN_DATEI_INDEX.html" als index.html. Das spart Dateiuploads, bietet jedoch KEINE
-Offline-Unterstützung. Eine normale HTTPS-Veröffentlichung wird weiter benötigt.
+Hinweis: Lokale Daten liegen im Browserspeicher der bisherigen Webadresse,
+NICHT im GitHub-Repository. Der App-Code wird beim Update ersetzt,
+aber die gespeicherten Daten bleiben bei gleicher Webadresse/Speicherumgebung
+in der Regel bestehen. Das ist keine Garantie; das JSON-Backup ist wichtig.
+GitHub Pages ist öffentlich: niemals echte Stammtischdaten, Backups oder
+Supabase-Geheimschlüssel in das öffentliche GitHub-Repository hochladen.
 
-WICHTIG: Die veröffentlichte GitHub-Pages-Website und die dortigen QUELLCODE-Dateien
-sind öffentlich sichtbar. Die einzelnen Mitgliederdaten liegen NICHT im Quellcode,
-sondern lokal bzw. nach Cloud-Einrichtung in deiner geschützten Datenbank.
+NEU VERÖFFENTLICHEN – NUR MIT IPHONE
+-----------------------------------
+1. GitHub-Konto anlegen oder anmelden: https://github.com
+2. Öffentliches Repository z. B. 'stammtisch-plus' erstellen.
+3. Für einfaches Hochladen: separate Ein-Datei-Version verwenden.
+   Darin liegt bereits die fertige Datei 'index.html'. Diese direkt in das
+   Hauptverzeichnis des Repositorys hochladen (nicht die ZIP-Datei).
+4. Repository -> Settings -> Pages -> Deploy from a branch ->
+   Branch main, Ordner / (root) -> Save.
+5. Nach Veröffentlichung die Pages-Adresse in Safari auf dem iPhone öffnen.
+6. Safari -> Teilen -> Zum Home-Bildschirm hinzufügen. Wenn angeboten:
+   'Als Web-App öffnen' wählen.
+7. Die App anschließend über das Home-Bildschirm-Symbol öffnen.
 
-CLOUD (OPTIONAL, FÜR SICHERUNG UND SYNCHRONISIERUNG)
----------------------------------------------------
-1. Erstelle auf https://supabase.com ein Supabase-Projekt.
-2. Öffne dort SQL Editor und führe den Inhalt von "supabase-schema.sql" aus.
-   Er erzeugt eine Tabelle mit Row-Level-Security; jeder Benutzer kann nur
-   den eigenen Datensatz lesen und bearbeiten.
-3. Kopiere aus Project Settings / API die "Project URL" und den öffentlichen
-   "Publishable key" bzw. älteren "anon key". NICHT service_role/secret!
-4. Öffne Stammtisch+ -> Mehr -> Cloud einrichten -> trage beide Werte ein.
-5. Registriere dich in der App mit E-Mail/Passwort und bestätige ggf. die E-Mail.
-6. Melde dich an und wähle beim ersten Abgleich, welche Daten du behalten willst.
-7. Konfiguriere im Supabase-Dashboard die Auth-URL-Einstellungen passend
-   zur veröffentlichten HTTPS-Adresse, wenn E-Mail-Bestätigungen eine
-   Weiterleitung verwenden. Für produktive Nutzung die E-Mail-Zustellung prüfen.
-8. Teste die Wiederherstellung und erstelle außerdem regelmäßig JSON-Backups.
+Beispieladresse:
+https://DEIN-BENUTZERNAME.github.io/stammtisch-plus/
 
-Supabase-Projekt und GitHub-Konto sind separate Dienste. Tarife, Limits und
-Datenschutzbedingungen des Anbieters vor Nutzung prüfen. Inhalte einschließlich
-persönlicher Abwesenheitsgründe werden bei aktiver Cloud auf Supabase gespeichert.
-
-DATEN & BERECHNUNGEN
---------------------
-- Jahresrangliste: nur tatsächliche Anwesenheiten bei abgeschlossenen Treffen
-  innerhalb des gewählten Kalenderjahres.
-- Ewige Rangliste: historischer, einmalig eingegebener Teilnahme-Startwert
-  plus automatisch gezählte Teilnahmen aus allen abgeschlossenen Treffen.
-- Fällt ein Mitglied aus, wird der Grund frei eingegeben (Vorschläge verfügbar).
-- Abwesenheit führt NIE automatisch zu einer Strafe.
-- Eine Strafe kann bei einer Abwesenheit oder manuell angelegt werden.
-- Zahlungen inkl. Teilzahlungen sind gesondert gespeichert; sie werden von
-  der offenen Summe abgezogen.
-- CSV-Dateien enthalten Semikolon-Trennzeichen und UTF-8-BOM für Excel.
-- Backup und Import verwenden JSON.
-
-OFFLINE-MODUS
-------------
-Die vollständige Version hat einen Service Worker und funktioniert nach einmaligem
-Online-Laden größtenteils ohne Netzverbindung (Cloud-Abgleich erst wieder online).
-Browser-/iOS-Speicher kann jedoch bei Speicherbereinigung gelöscht werden.
-Deshalb Cloud-Synchronisierung und regelmäßige JSON-Sicherungen nutzen.
-
-BESCHRÄNKUNGEN DIESER VERSION
-----------------------------
-- Keine Veröffentlichung oder App-Store-Anmeldung bereits durchgeführt.
-- Kein Cloud-Konto für dich angelegt; Zugangsdaten musst du selbst einrichten.
-- Cloud hat eine einfache Konflikt-Auswahl, keinen automatischen Feld-Merge.
-- Echte iPhone-/Safari-Tests sind noch erforderlich; Entwicklungstest ist
-  kein Ersatz für einen Test mit eigenen Daten und Geräten.
-- Keine vollständige Buchhaltung im steuerrechtlichen Sinn, nur Strafen und
-  deren Zahlungseingänge. Ausgaben sind derzeit nicht enthalten.
-- Die App wird nicht durch einen iOS-Build installiert, sondern als Web-App.
-- Sensible Gesundheitsangaben bei Abwesenheiten möglichst vermeiden.
+Ein-Datei-Version: nur index.html; keine Service-Worker-Offlinespeicherung.
+Die Daten werden auf dem Gerät in localStorage gespeichert und bleiben bei
+normaler Nutzung erhalten, sind aber nicht als unfehlbar oder automatisch
+extern gesichert anzusehen. Für zuverlässigeren Offline-App-Betrieb die
+vollständige Mehr-Dateien-Version veröffentlichen.
 
 DATEIEN
 -------
-index.html           Benutzeroberfläche, Stil und Metadaten
-app.js               Logik, Speicherung, Auswertung und Cloud-Anbindung
-service-worker.js    Offline-Cache
-manifest.webmanifest Installation als App
-icons/               App-Symbole
-supabase-schema.sql  Datenbank & Zugriffsregeln
-EIN_DATEI_INDEX.html Alternative mit nur einer Datei (ohne Offline-Cache)
+index.html             HTML und Gestaltung
+app.js                 gesamte Anwendungslogik
+manifest.webmanifest   iPhone-/PWA-Metadaten
+service-worker.js      Offline-Cache für die Mehr-Dateien-Version
+icons/                 App-Symbole
+supabase-schema.sql    optionale persönliche Supabase-Cloud-Datenbank
+EIN_DATEI_INDEX.html   eigenständige Datei, als index.html hochladen
+test-logic.cjs         ursprüngliche Logiktests
+test-v2.cjs            Tests für die neuen Funktionen
+
+CLOUD (OPTIONAL)
+----------------
+Die bestehende Supabase-Anbindung bleibt unverändert erhalten. Kein neuer
+SQL-Migrationsschritt nötig, weil die Dokumente als JSON gespeichert werden.
+In der App unter Mehr -> Cloud einrichten kannst du eine private Datenbank
+verbinden. Nicht mit einem geheimen service_role-Key arbeiten. Zugang und
+Nutzung eines Supabase-Kontos müssen selbst eingerichtet werden. Bei
+mehreren Geräten Konflikte bewusst behandeln und Backups anfertigen.
+
+WEITERE HINWEISE
+----------------
+- Die komplette Web-App erfordert HTTPS (z. B. GitHub Pages).
+- Mitgliedsnummern können nachträglich geändert werden; die Organisatorfolge
+  richtet sich danach bei neu angelegten Treffen entsprechend neu aus.
+- Bestehende Treffen behalten ihren bisher gespeicherten Organisator.
+  Historische Treffen aus alter Version haben zunächst keinen Organisator.
+- Auch bei aktiviertem Service Worker kann Safari Speicher entfernen.
+  Deshalb unbedingt regelmäßig JSON-Sicherungen außerhalb der Web-App ablegen.
+- Lokale Daten auf dem Gerät sind ohne zusätzliche Schutzmaßnahmen nur durch
+  Gerätesperre/Browsersicherheitsmodell geschützt; unnötig sensible Gründe
+  möglichst nicht erfassen.
+- Diese Version wurde automatisch per Syntaxprüfung und JavaScript-Logiktests
+  geprüft; ein echter iPhone-Safari-End-to-End-Test steht noch aus.
