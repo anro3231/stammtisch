@@ -1,19 +1,33 @@
-FantastiX · GitHub Pages Version 3.3.0
+FantastiX v3.4.0 – GitHub Pages
 
-Installation:
-1. Zuerst in der bisherigen App unter Mehr → JSON exportieren eine vollständige Sicherung anlegen.
-2. Das ZIP entpacken und ALLE enthaltenen Dateien und den Ordner icons in dein Repository andi (main / root) laden.
-3. In GitHub unter Settings → Pages: Deploy from a branch, main, /(root).
-4. GitHub Actions/Pages Deployment abwarten.
-5. FantastiX unter https://anro3231.github.io/andi/ aufrufen.
-6. Falls eine alte Version geladen wird: https://anro3231.github.io/andi/aktualisieren.html öffnen und App aktualisieren antippen.
+NEU
+- Zoom-Sperre für iPhone wie in v3.3.1 (systembedingte Ausnahmen möglich)
+- Kontostand unter Kassa; mit Korrekturbuchung manuell änderbar
+- Strafzahlungen erhöhen den Kontostand; Stornos ziehen die Zahlung wieder ab
+- Ausgaben als Kassenbuch-Buchung erfassen und optional stornieren
+- Monatlicher Mitgliederbeitrag (Standard 15,00 EUR je aktivem Mitglied)
+- Beiträge am Monatsersten automatisch, sobald die App wieder geöffnet wird
+- Konfigurierbarer Betrag und Startmonat, gebuchte Monate bleiben unverändert
 
-Wichtig:
-Die bisherigen Daten liegen weiterhin unter dem bisherigen localStorage-Schlüssel. Nicht die Browser-/Website-Daten löschen.
-Stammtische gesamt = historischer Dashboard-Startwert 150 + Anzahl dokumentierter Stammtische mit Datum bis heute.
-Jahres- und ewige Ranglisten zählen jeweils nur tatsächlich markierte Anwesenheiten bei Stammtischen mit Datum bis heute.
-Nicht markierte Mitglieder bleiben offen. Alte historische Teilnahme-Startwerte bleiben erhalten.
-Straf- und Zahlungseinträge bekommen intern automatisch ein Datum, ohne dass es im Formular eingegeben wird.
-Lokale Browser-Snapshots sind kein Ersatz für eine externe JSON-Sicherung.
+WICHTIG ZUR MIGRATION
+Bei der erstmaligen Aktualisierung wird ein Kassenbuch eingerichtet. Zuvor vorhandene
+Strafzahlungen werden NICHT automatisch erneut als Kassen-Zugang gezählt, da du deinen
+bestehenden Kontostand manuell festlegen kannst. Neue Strafzahlungen werden automatisch
+zugerechnet. Standardstart für monatliche Beiträge ist der 1. des nächsten Monats,
+damit ein bereits im Anfangskontostand enthaltener laufender Monat nicht doppelt zählt.
+Du kannst den Startmonat in Kassa > Monatsbeiträge > Ändern anpassen.
 
-Das hochgeladene FantastiX-Logo ist in Kopfbereich und App-Icons integriert.
+Ein Monat wird pro Datenstand höchstens einmal gebucht. Öffnest du die App mehrere Monate
+nicht, werden die ausstehenden Monate beim nächsten Öffnen nachgebucht. Dabei wird die
+aktuell gespeicherte Anzahl aktiver Mitglieder für die Nachbuchungen verwendet; historische
+Mitgliedswechsel lassen sich offline nicht rückwirkend rekonstruieren.
+Die Monatsbuchungen sind automatische Soll-Kassen-Zugänge (keine bestätigten Bankumsätze).
+
+UPDATE (Vollversion empfohlen)
+1. Vorher unter Mehr > JSON exportieren ein vollständiges Backup anlegen.
+2. Alle Dateien/Ordner aus dem ZIP nach GitHub hochladen, Dateien im Repo ersetzen.
+3. Actions / Pages-Veröffentlichung abwarten; ggf. aktualisieren.html öffnen.
+4. Unter Kassa den tatsächlichen Kontostand eintragen. Danach eine Testausgabe buchen.
+
+BITTE NICHT die Browser-/Website-Daten löschen. Bestehende Mitglieder, Stammtische,
+Strafen und Zahlungsdatensätze bleiben beim Update erhalten.
