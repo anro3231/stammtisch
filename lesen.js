@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.11.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.11.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -114,7 +114,7 @@ function dashboard(){
  const yr=section('members')?leaders(currentYear()):[],all=section('members')?leaders(null):[];
  const pending=section('fines')?data.fines.reduce((s,f)=>s+n(f.amountCents),0)-data.payments.reduce((s,p)=>s+n(p.amountCents),0):null;
  const leaderHTML=lst=>lst.length?`<div class="leader-list">${lst.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${lst[0].count} Teilnahmen</small>`:'<div class="value">–</div>';
- return `${heading('Dashboard')}${pushPromptHTML()}<div class="metric-grid dashboard-v36">
+ return `${heading('Dashboard')}<div class="metric-grid dashboard-v36">
   <div class="metric"><small>Tage bis zum Stammtisch</small><div class="value">${next?daysUntil(next.date):'–'}</div></div>
   <div class="metric"><small>Jahresführung ${currentYear()}</small>${leaderHTML(yr)}</div>
   <div class="metric"><small>Ewige Führung</small>${leaderHTML(all)}</div>
@@ -123,7 +123,8 @@ function dashboard(){
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${votePanel(next,true)}${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-tab="meetings">Alle ansehen →</button></div>`:''}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
- ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}`;
+ ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
+ ${pushPromptHTML()}`;
 }
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';

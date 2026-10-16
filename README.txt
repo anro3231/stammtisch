@@ -1,6 +1,5 @@
-FantastiX v3.11.0 – Events, Kalender, Web Push und gelöschte Stammtische.
+FantastiX v3.11.1 – Anzeige der Push-Mitteilungen im Leser-Dashboard ganz unten.
 
-GitHub-Pages-Dateien: index.html, lesen.html, app.js, lesen.js, calendar-view.js, push-config.js, service-worker.js, manifest-Dateien, Icons.
+Reines Layout-Update: Kein neues Supabase-SQL erforderlich. Alle Funktionen der Version 3.11.0 bleiben erhalten.
 
-Die bestehende cloud-config.js UNVERÄNDERT lassen.
-Supabase-Setup nur privat verwenden und NICHT auf GitHub hochladen.
+GitHub Pages: Dateien dieser ZIP in das Repository hochladen, die vorhandene cloud-config.js NICHT überschreiben. Danach auf aktualisieren.html den Cache aktualisieren.
