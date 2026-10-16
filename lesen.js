@@ -456,32 +456,46 @@ async function changePassword(form){
  form.reset();alert('Passwort geändert.');
 }
 async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;fxAlerts=[];fxRenderBell();await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};lastOnlineByMember={};lastOnlineChecked=0;birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
-async function castVote(meetingId,status,reason='',note=''){
- if(busy)return alert('Bitte warten: Es läuft noch ein Vorgang. Danach erneut speichern.');
- if(!data||!profile?.member_id)return alert('Dein Mitgliedskonto ist noch nicht vollständig geladen. Bitte die Seite neu öffnen.');
+async function castVote(meetingId,status,reason='',note='',keepDialog=false){
+ const dlg=$('#absence-dialog');
+ const info=()=>dlg?.querySelector('#vote-save-status');
+ const report=(message,failed=false)=>{
+   const el=info();
+   if(el){el.textContent=message;el.style.color=failed?'#b91c1c':'inherit';}
+   else alert(message);
+ };
+ const button=dlg?.querySelector('#yes-note-form button[type="submit"]');
+ if(busy){report('Bitte warten: Ein anderer Vorgang läuft noch.',true);return;}
+ if(!data||!profile?.member_id){report('Mitgliedskonto nicht geladen. Bitte Seite neu öffnen.',true);return;}
  const m=data.meetings.find(x=>x.id===meetingId);
- if(!m)return alert('Stammtisch nicht gefunden. Bitte die Seite neu laden.');
+ if(!m){report('Stammtisch nicht gefunden.',true);return;}
  const cutoff=meetingVoteDeadline(m);
- if(!cutoff||Date.now()>=cutoff.getTime())return alert('Die Abstimmungsfrist ist abgelaufen. Nur der Admin kann die Anwesenheit noch ändern.');
- if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
- if(note.length>160)return alert('Bitte höchstens 160 Zeichen eingeben.');
- busy=true;renderApp();
+ if(!cutoff||Date.now()>=cutoff.getTime()){report('Die Abstimmungsfrist ist abgelaufen.',true);return;}
+ if(status==='absent'&&!reason.trim()){report('Bitte einen Grund eintragen.',true);return;}
+ if(note.length>160){report('Bitte höchstens 160 Zeichen eingeben.',true);return;}
+ busy=true;if(button)button.disabled=true;
+ report('Speichere deine Stimme …');
  try{
-   const {error}=await cloud.rpc('fantastix_cast_vote',{
+   const result=await cloud.rpc('fantastix_cast_vote',{
      p_meeting_id:meetingId,p_status:status,p_reason:status==='absent'?reason.trim():'',p_note:status==='present'?note.trim():''
    });
-   if(error)throw error;
-   await refresh();
-   const saved=data?.meetings?.find(x=>x.id===meetingId)?.attendance?.[profile?.member_id];
-   if(saved?.status!==status){
-     alert('Die Datenbank hat den Speichervorgang beantwortet, aber die neue Stimme ist in der veröffentlichten Ansicht nicht sichtbar. Bitte dem Admin melden.');
-   }else if(status==='present' && (saved.note||'')!==note.trim()){
-     alert('Deine Zusage wurde gespeichert, aber die Notiz stimmt noch nicht überein. Bitte dem Admin melden.');
-   }else{
-     alert(status==='present'?'Deine Zusage „Dabei“ wurde gespeichert.':'Deine Absage „Nicht dabei“ wurde gespeichert.');
+   if(result.error)throw result.error;
+   // Unabhängig vom Dashboard direkt die veröffentlichte Datenbank prüfen.
+   const pub=await cloud.from('fantastix_public').select('content').eq('id','main').eq('is_published',true).maybeSingle();
+   if(pub.error)throw pub.error;
+   const saved=pub.data?.content?.meetings?.find(x=>x.id===meetingId)?.attendance?.[profile.member_id];
+   if(saved?.status!==status)throw Error('Supabase hat geantwortet, aber die veröffentlichte Stimme lautet weiterhin '+(saved?.status||'offen')+'.');
+   if(status==='present'&&(saved.note||'')!==note.trim())throw Error('Zusage gespeichert, aber die Notiz wurde nicht übernommen.');
+   report(status==='present'?'✓ Dabei und Notiz erfolgreich gespeichert.':'✓ Nicht dabei gespeichert.');
+   if(keepDialog){
+     const form=dlg?.querySelector('#yes-note-form');
+     if(form){const submit=form.querySelector('button[type="submit"]');if(submit)submit.textContent='Gespeichert';}
    }
- }catch(e){alert('Abstimmung nicht gespeichert: '+(e?.message||String(e)));}
- finally{busy=false;if(data)renderApp();}
+   // Dashboard erst aktualisieren, nachdem die Erfolgsmeldung sichtbar ist.
+   try{await refresh();}catch(e){console.warn('Nachladen:',e);}
+   if(!keepDialog&&dlg?.open)dlg.close();
+ }catch(e){report('Nicht gespeichert: '+(e?.message||String(e)),true);}
+ finally{busy=false;if(button&&button.isConnected&&button.textContent!=='Gespeichert')button.disabled=false;}
 }
 async function voteExcursion(id,status,note=''){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
@@ -500,7 +514,7 @@ async function voteExcursion(id,status,note=''){
 function askYesNote(kind,id){
  const dlg=$('#absence-dialog');
  const saved=kind==='meeting'?effective(data.meetings.find(m=>m.id===id)||{},profile?.member_id):excursionVotes.find(v=>v.excursion_id===id&&v.member_id===profile?.member_id);
- dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>✓ Dabei</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div><form id="yes-note-form"><input type="hidden" name="kind" value="${esc(kind)}"><input type="hidden" name="id" value="${esc(id)}"><div class="field"><label>Notiz (optional · für alle Mitglieder sichtbar)</label><input name="note" maxlength="160" value="${esc(saved?.note||'')}" placeholder="z. B. Komme später"></div><p class="hint">Alle freigeschalteten Mitglieder können deine Notiz zur Zusage lesen.</p><div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Dabei speichern</button></div></form></div>`;
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>✓ Dabei</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div><form id="yes-note-form"><input type="hidden" name="kind" value="${esc(kind)}"><input type="hidden" name="id" value="${esc(id)}"><div class="field"><label>Notiz (optional · für alle Mitglieder sichtbar)</label><input name="note" maxlength="160" value="${esc(saved?.note||'')}" placeholder="z. B. Komme später"></div><p class="hint">Alle freigeschalteten Mitglieder können deine Notiz zur Zusage lesen.</p><div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Dabei speichern</button></div><p id="vote-save-status" role="status" aria-live="polite" style="margin:12px 0;font-weight:600"></p></form></div>`;
  dlg.showModal();
 }
 function askAbsenceReason(meetingId){
@@ -518,7 +532,7 @@ document.addEventListener('submit',e=>{
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
  if(e.target.id==='birthday-form'){e.preventDefault();saveMyBirthday(e.target);}
  if(e.target.id==='member-notice-form'){e.preventDefault();sendMemberNotice(e.target);}
- if(e.target.id==='yes-note-form'){e.preventDefault();const fd=new FormData(e.target),note=String(fd.get('note')||'').trim();$('#absence-dialog').close();if(fd.get('kind')==='meeting')castVote(String(fd.get('id')),'present','',note);else voteExcursion(String(fd.get('id')),'yes',note);}
+ if(e.target.id==='yes-note-form'){e.preventDefault();const fd=new FormData(e.target),note=String(fd.get('note')||'').trim();if(fd.get('kind')==='meeting'){castVote(String(fd.get('id')),'present','',note,true).catch(err=>{const el=$('#vote-save-status');if(el)el.textContent='Fehler: '+String(err);});}else{$('#absence-dialog').close();voteExcursion(String(fd.get('id')),'yes',note);}}
  if(e.target.id==='absence-reason-form'){
    e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
    if(!reason)return alert('Bitte einen Abwesenheitsgrund eintragen.');
