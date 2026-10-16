@@ -1,5 +1,11 @@
-FantastiX v3.12.0 – GitHub Pages + Supabase
-Neue Funktionen: Änderungsverlauf (nur Admin), wöchentliche Cloud-Backups mit sicherer Wiederherstellung und jährlich wiederkehrende Geburtstage (Tag/Monat).
-ZUERST SQL 13 und SQL 14 gemäß ANLEITUNG_3_12.txt ausführen, DANN App-Dateien auf GitHub Pages hochladen.
-cloud-config.js mit bestehenden Supabase-Schlüsseln behalten!
-Wöchentlicher Cron läuft nur nach erfolgreicher Installation des pg_cron-Jobs. Testplan beachten.
+FantastiX v3.12.1 – GitHub Pages + Supabase
+
+Änderungen:
+- In der Rangliste (Admin und Mitgliederportal) ein klarer Jahresfilter: Ewig und 2026, 2027 usw. automatisch ab Jahresbeginn.
+- Im Admin-Mitgliederbildschirm die Schaltfläche „Teilnahmen 2026“ entfernt. Die bisherigen Startwerte bleiben in den Daten erhalten. Die Mitgliederübersicht zeigt automatisch das aktuelle Jahr.
+- Auf dem Admin-Dashboard die Buttons „Kalender öffnen“ und „+ Mitglied“ entfernt. Kalender und Mitgliederverwaltung bleiben in der Navigation erreichbar.
+- Push-Fix: Service Worker muss vor subscribe() aktiviert sein. Optionaler Offline-Cache kann seine Installation nicht mehr durch eine fehlende Datei verhindern.
+
+Nur Dateien aus diesem ZIP ins bestehende GitHub-Repository kopieren.
+Die vorhandene cloud-config.js beibehalten. Kein zusätzliches Supabase-SQL notwendig.
+Falls Push weiterhin nicht funktioniert: Anleitung PUSH_UND_UPDATE.txt beachten.

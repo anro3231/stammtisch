@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.12.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.12.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -165,8 +165,8 @@ function excursions(){
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
- const years=[...new Set(['2026',currentYear(),...data.meetings.map(m=>m.date.slice(0,4))])].sort().reverse();
- return `${heading('Ranglisten')}<div class="card"><div class="pill-group"><button class="pill ${year==='all'?'selected':''}" data-year="all">Ewig</button>${years.map(y=>`<button class="pill ${year===y?'selected':''}" data-year="${y}">${y}</button>`).join('')}</div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td>${esc(m.name)}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
+ const nowYear=Number(currentYear());const years=[...new Set([...Array.from({length:Math.max(1,nowYear-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>m.date.slice(0,4))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();
+ return `${heading('Ranglisten')}<div class="card"><div class="field"><label for="reader-ranking-year">Rangliste auswählen</label><select id="reader-ranking-year" aria-label="Rangliste nach Jahr filtern"><option value="all" ${year==='all'?'selected':''}>Ewig · Alle Jahre</option>${years.map(y=>`<option value="${y}" ${year===y?'selected':''}>${y}</option>`).join('')}</select></div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td>${esc(m.name)}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function myBirthday(){return birthdays.find(b=>b.member_id===profile?.member_id);}
@@ -193,7 +193,7 @@ async function deleteMyBirthday(){
 }
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
- return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>2026: ${count(m,'2026')} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
+ return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
 }
 function cash(){
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
@@ -252,9 +252,32 @@ function pushPromptHTML(){
  if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen und Admin-Nachrichten. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
  return `<section class="push-setup"><strong>Stammtisch-Mitteilungen</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen und Admin-Nachrichten. Es gibt keine Fristerinnerungen.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 Mitteilungen erlauben</button><p class="push-status">${Notification.permission==='denied'?'Mitteilungen sind für FantastiX in deinen Geräteeinstellungen blockiert.':''}</p></section>`;
 }
+// PushManager.subscribe() darf erst nach der Aktivierung des Service Workers laufen.
+// Eine erfolgreiche register()-Antwort allein bedeutet NICHT, dass er schon aktiv ist.
+async function activePushRegistration(){
+ const script=new URL('./service-worker.js',location.href);
+ const registration=await navigator.serviceWorker.register(script.href,{scope:'./',updateViaCache:'none'});
+ if(registration.active?.state==='activated')return registration;
+ await new Promise((resolve,reject)=>{
+  let settled=false;
+  const worker=registration.installing||registration.waiting||registration.active;
+  const cleanup=()=>{clearTimeout(timer);worker?.removeEventListener('statechange',check);navigator.serviceWorker.removeEventListener('controllerchange',check);};
+  const finish=(err)=>{if(settled)return;settled=true;cleanup();err?reject(err):resolve();};
+  const check=()=>{
+   if(registration.active?.state==='activated'||worker?.state==='activated')finish();
+   else if(worker?.state==='redundant')finish(Error('Der Service Worker konnte nicht installiert werden. Bitte FantastiX über „aktualisieren.html“ aktualisieren und erneut versuchen.'));
+  };
+  const timer=setTimeout(()=>finish(Error('Der Service Worker wurde nicht rechtzeitig aktiv. Bitte die App neu öffnen und erneut versuchen.')),20000);
+  worker?.addEventListener('statechange',check);
+  navigator.serviceWorker.addEventListener('controllerchange',check);
+  check();
+ });
+ if(!registration.active||registration.active.state!=='activated')throw Error('Kein aktiver Service Worker. Bitte die App neu öffnen.');
+ return registration;
+}
 async function detectPushSubscription(){
  if(!pushSupported()||!user||!profile?.member_id)return;
- try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
+ try{const reg=await activePushRegistration();const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
  if(tab==='dashboard'&&data)renderApp();
 }
 async function enablePush(){
@@ -265,7 +288,7 @@ async function enablePush(){
   // Prompt unmittelbar infolge des Nutzer-Tipps aufrufen (iOS-Anforderung).
   const permission=await Notification.requestPermission();
   if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Bitte prüfe die iPhone-Einstellungen.');
-  const reg=await navigator.serviceWorker.register('./service-worker.js');
+  const reg=await activePushRegistration();
   let sub=await reg.pushManager.getSubscription();
   const vapid=base64UrlToUint8Array(PUSH_CONFIG());
   if(sub&&sub.options?.applicationServerKey){const current=new Uint8Array(sub.options.applicationServerKey);if(current.length!==vapid.length||current.some((v,i)=>v!==vapid[i])){await sub.unsubscribe();sub=null;}}
@@ -273,7 +296,7 @@ async function enablePush(){
   const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});
   if(error)throw error;
   pushEnabled=true;alert('Mitteilungen sind aktiviert.');
- }catch(e){alert('Push-Aktivierung fehlgeschlagen: '+(e.message||String(e))+'\nBitte Supabase-SQL-Update 10 und die Edge-Funktion prüfen.');}
+ }catch(e){const message=e.message||String(e);alert('Push-Aktivierung fehlgeschlagen: '+message+'\nFalls der Service Worker noch nicht aktiv ist: FantastiX aktualisieren, die installierte Home-Bildschirm-App schließen und neu öffnen. Falls die Anmeldung in Supabase fehlschlägt: Push-SQL und Edge-Funktion prüfen.');}
  finally{pushBusy=false;renderApp();}
 }
 async function disablePush(){
@@ -444,7 +467,7 @@ document.addEventListener('click',e=>{
 });
 $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
 $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
-document.addEventListener('change',e=>{if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
+document.addEventListener('change',e=>{if(e.target.id==='reader-ranking-year'){year=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar'].includes(e.data.tab)){tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);

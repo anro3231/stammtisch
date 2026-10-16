@@ -1,6 +1,20 @@
-const CACHE='fantastix-v3.12.0';
-const FILES=['./','./index.html','./app.js','./lesen.html','./lesen.js','./cloud-config.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())));
+const CACHE='fantastix-v3.12.1';
+const FILES=['./','./index.html','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
+self.addEventListener('install',event=>event.waitUntil((async()=>{
+ // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung
+ // verhindern und PushManager.subscribe() mit "requires an active service worker" abbrechen.
+ try{
+  const cache=await caches.open(CACHE);
+  await Promise.all(FILES.map(async path=>{
+   try{
+    const req=new Request(new URL(path,self.registration.scope),{cache:'reload'});
+    const response=await fetch(req);
+    if(response.ok)await cache.put(req,response);
+   }catch(err){console.warn('Optionaler FantastiX-Cache-Eintrag fehlgeschlagen:',path,err);}
+  }));
+ }catch(err){console.warn('Offline-Cache nicht verfügbar, Push bleibt möglich:',err);}
+ await self.skipWaiting();
+})()));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('fantastix-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
  if(e.request.method!=='GET'||new URL(e.request.url).origin!==self.location.origin)return;
