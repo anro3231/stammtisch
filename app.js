@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.13.0';
+const APP_VERSION = '3.13.1';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -127,6 +127,12 @@ function cashHistory(){
 function finePaid(id){return data.payments.filter(p=>p.fineId===id).reduce((s,p)=>s+n(p.amountCents),0);}
 function fineOpen(f){return Math.max(0,n(f.amountCents)-finePaid(f.id));}
 let readerProfiles = [];
+function voteTime(value){
+ if(!value)return '';
+ const parsed=new Date(value);
+ if(!Number.isFinite(parsed.getTime()))return '';
+ return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(parsed).replace(',', ' · ')+' Uhr';
+}
 function effectiveAttendance(m,id){const own=m.attendance?.[id];return own&&['present','absent'].includes(own.status)?own:null;}
 function stats(id,year){const meetings=data.meetings.filter(m=>doneMeeting(m)&&(!year||yearOf(m.date)===String(year)));const present=meetings.filter(m=>effectiveAttendance(m,id)?.status==='present').length;const eligible=meetings.filter(m=>!!effectiveAttendance(m,id)).length;return {present,eligible,pct:eligible?Math.round(100*present/eligible):0};} 
 function leaders(year){const rows=rankRows(year);return rows.length&&rows[0].count>0?rows.filter(m=>m.count===rows[0].count):[];}
@@ -156,10 +162,10 @@ function homeHTML(){
  const leaderList=(list)=>list.length?`<div class="leader-list">${list.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${list[0].count} Teilnahmen</small>`:`<div class="value">–</div>`;
  return `${pageHead('','Dashboard','')}
   <div class="metric-grid dashboard-stats dashboard-v36">
-   <div class="metric"><small>Tage bis zum Stammtisch</small><div class="value">${days===null?'–':days}</div></div>
+   <div class="metric"><small>Tage bis zum Lecker Bierchen <span class="beer-symbol" aria-hidden="true">🍺</span></small><div class="value">${days===null?'–':days}</div></div>
+   <div class="metric"><small>Kontostand</small><div class="value balance-tile">${money(accountBalance())}</div><small>Offene Strafen: ${money(pending)}</small></div>
    <div class="metric"><small>Jahresführende ${yearOf(today())}</small>${leaderList(yearBest)}</div>
    <div class="metric"><small>Ewige Rangliste · Führung</small>${leaderList(allBest)}</div>
-   <div class="metric"><small>Kontostand</small><div class="value balance-tile">${money(accountBalance())}</div><small>Offene Strafen: ${money(pending)}</small></div>
   </div>
   <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
    ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}
@@ -197,7 +203,7 @@ function excursionForm(id){
   const v=already.find(v=>v.member_id===m.id),isMine=ownMemberId===m.id;
   return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
    <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
-   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small></div>
+   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}</div>
    <div class="excursion-admin-vote-buttons" role="group" aria-label="Eventszusage für ${esc(m.name)}">
     ${[['yes','✓ Da'],['no','× Nicht da'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
@@ -221,7 +227,7 @@ function updateExcursionVoteControls(id){
  const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} da / ${selected.filter(v=>v.status==='no').length} nicht da`;
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
-  if(label)label.textContent=(v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');
+  if(label){label.textContent=(v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();}
   for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
    const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
    button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));
@@ -389,7 +395,7 @@ function meetingForm(id){
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
 }
 function fineForm(){

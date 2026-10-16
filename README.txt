@@ -1,4 +1,4 @@
-FantastiX 3.13.0 | GitHub Pages Update
+FantastiX 3.13.1 | GitHub Pages Update
 
 Dateien dieses Ordners in das bestehende GitHub-Repository hochladen.
 WICHTIG: Deine vorhandene cloud-config.js und push-config.js beibehalten.
