@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.14.0';
+const APP_VERSION = window.FANTASTIX_VERSION;
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -421,7 +421,17 @@ function meetingForm(id){
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
  ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Dabei</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Nicht dabei</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}"><div class="field" style="margin:8px 0"><label>Notiz bei „Dabei“ (für alle sichtbar · optional)</label><input name="present-note-${person.id}" maxlength="160" value="${esc(entry.status==='present'?entry.note||'':'')}" placeholder="z. B. Komme später"></div>${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${id?'<div id="member-cloud-notes" class="notice">Mitgliedernotizen werden geladen …</div>':''}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
+ if(id)loadAdminMeetingNotes(id);
+}
+async function loadAdminMeetingNotes(id){
+ const el=document.getElementById('member-cloud-notes');if(!el)return;
+ if(!cloudClient||!cloudUser){el.textContent='Mitgliedernotizen: Cloud-Anmeldung erforderlich.';return;}
+ const {data:rows,error}=await cloudClient.from('fantastix_meeting_notes').select('member_id,note').eq('meeting_id',id);
+ if(!el.isConnected)return;
+ if(error){el.textContent='Mitgliedernotizen nicht verfügbar (SQL 19 prüfen).';return;}
+ el.innerHTML='<strong>Notizen der Mitglieder</strong>'+((rows||[]).filter(x=>x.note).map(x=>'<p>'+esc(member(x.member_id)?.name||'Mitglied')+': '+esc(x.note)+'</p>').join('')||'<p>Keine zusätzlichen Notizen.</p>');
 }
 function fineForm(){
  if(!data.members.length)return alert('Bitte lege zuerst ein Mitglied an.');

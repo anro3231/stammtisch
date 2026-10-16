@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.13.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.14.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -12,7 +12,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let meetingNotes=[],birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -63,13 +63,15 @@ function voteTime(value){
  if(!Number.isFinite(parsed.getTime()))return '';
  return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(parsed).replace(',', ' · ')+' Uhr';
 }
+function meetingNote(id,memberId){return meetingNotes.find(x=>x.meeting_id===id&&x.member_id===memberId)?.note||"";}
+function meetingNoteDisplay(m,memberId){return meetingNote(m.id,memberId)||(effective(m,memberId)?.status==='present'?effective(m,memberId)?.note||'':'');}
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
  return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id);
- return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
+ return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='present'&&meetingNoteDisplay(m,p.id)?`<small class="meeting-note-visible">📝 ${esc(meetingNoteDisplay(m,p.id))}</small>`:''}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
  <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Da':'× Nicht da'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
 }
@@ -142,6 +144,7 @@ function votePanel(m,compact=false){
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Da</button>
  <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht da</button></div>
+ ${status==='present'&&!locked&&!closed?`<div class="meeting-note-editor"><label for="meeting-note-${esc(m.id)}">Notiz für alle (optional, max. 160 Zeichen)</label><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme 15 Minuten später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Notiz speichern</button></div>`:''}
  ${status?`<small class="muted">${status==='present'?'Zusage':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
@@ -361,6 +364,7 @@ async function refresh(){
     else{excursionVotes=res.data||[];excursionVoteError='';}
   }else{excursionVotes=[];excursionVoteError='';}
 
+  try{const notes=await cloud.from('fantastix_meeting_notes').select('meeting_id,member_id,note');if(notes.error)throw notes.error;meetingNotes=notes.data||[];}catch(e){meetingNotes=[];console.warn('Mitgliedernotizen nicht verfügbar; SQL 19 installieren:',e.message);}
   try{await loadBirthdays();}catch(e){console.warn('Geburtstage nicht verfügbar:',e);birthdays=[];}
   try{await loadAvatars();}catch(e){console.warn('Profilfotos nicht verfügbar:',e);}
   try{const res=await cloud.rpc('fantastix_notice_list');if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}
@@ -412,7 +416,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -430,6 +434,19 @@ async function castVote(meetingId,status,reason=''){
    await refresh();
  }catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
  finally{busy=false;if(data)renderApp();}
+}
+async function saveMeetingNote(id,fromVote=false){
+ if(!cloud||!profile?.member_id||busy&&!fromVote)return;
+ const input=document.querySelector(`[data-meeting-note="${CSS.escape(id)}"]`);
+ if(!input)return;
+ const note=input.value.trim();if(note.length>160)return alert('Maximal 160 Zeichen erlaubt.');
+ const meeting=data?.meetings?.find(m=>m.id===id);
+ if(!meeting||effective(meeting,profile.member_id)?.status!=='present')return alert('Notizen sind nur bei einer Zusage möglich.');
+ const deadline=deadlines.get(id);if(!deadline||Date.now()>=new Date(deadline).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
+ const {error}=await cloud.from('fantastix_meeting_notes').upsert({meeting_id:id,member_id:profile.member_id,note},{onConflict:'meeting_id,member_id'});
+ if(error)return alert('Notiz konnte nicht gespeichert werden: '+error.message+' (SQL 19 installieren)');
+ await refresh();
+ if(!fromVote)alert('Notiz gespeichert und für alle Mitglieder sichtbar.');
 }
 async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
@@ -487,6 +504,7 @@ document.addEventListener('click',e=>{
  }
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
  if(e.target.closest('#close-absence,#cancel-absence')){$('#absence-dialog').close();return;}
+ const saveNote=e.target.closest('[data-save-meeting-note]');if(saveNote){saveMeetingNote(saveNote.dataset.saveMeetingNote);return;}
  const excursion=e.target.closest('[data-excursion-vote]');if(excursion){voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
  const vote=e.target.closest('[data-vote]');if(vote){
    if(vote.dataset.vote==='absent')askAbsenceReason(vote.dataset.meetingId);
