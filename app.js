@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.13.1';
+const APP_VERSION = '3.14.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -80,7 +80,7 @@ function excursionLastDate(x){return x.endDate||x.date||'';}
 function nextExcursion(){const pending=(data.excursions||[]).filter(x=>!x.completed&&(!x.date||excursionLastDate(x)>=today()));return [...pending].sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 let excursionVotes=[],excursionVoteWarning='';
 function excursionVoteCounts(id){const selected=excursionVotes.filter(v=>v.excursion_id===id);return {yes:selected.filter(v=>v.status==='yes').length,no:selected.filter(v=>v.status==='no').length};}
-async function reloadExcursionVotes(){if(!cloudReady||!cloudClient||!cloudUser)return;const {data:rows,error}=await cloudClient.rpc('fantastix_excursion_votes_admin_v2');if(error)throw error;excursionVotes=rows||[];excursionVoteWarning='';if(page==='excursions')render();}
+async function reloadExcursionVotes(){if(!cloudReady||!cloudClient||!cloudUser)return;const {data:rows,error}=await cloudClient.rpc('fantastix_excursion_votes_admin_v2');if(error)throw error;excursionVotes=rows||[];const notes=await cloudClient.rpc('fantastix_excursion_vote_notes_read');if(notes.error)throw notes.error;const map=new Map((notes.data||[]).map(x=>[x.excursion_id+'|'+x.member_id,x.note]));excursionVotes.forEach(v=>v.note=map.get(v.excursion_id+'|'+v.member_id)||'');excursionVoteWarning='';if(page==='excursions')render();}
 
 /* Kassa: Zahlungen vor dem Upgrade sind über die Kontostand-Anfangsbuchung abgedeckt.
    Künftige Strafzahlungen werden live aus payments berechnet; Löschungen wirken sofort.
@@ -126,7 +126,7 @@ function cashHistory(){
 }
 function finePaid(id){return data.payments.filter(p=>p.fineId===id).reduce((s,p)=>s+n(p.amountCents),0);}
 function fineOpen(f){return Math.max(0,n(f.amountCents)-finePaid(f.id));}
-let readerProfiles = [];
+let readerProfiles = [],lastOnlineByMember={};
 function voteTime(value){
  if(!value)return '';
  const parsed=new Date(value);
@@ -150,7 +150,21 @@ async function loadMemberAvatars(force=false){
  await Promise.all(list.map(async r=>{const signed=await cloudClient.storage.from('fantastix-avatars').createSignedUrl(r.object_name,3600);if(!signed.error&&signed.data?.signedUrl)found[r.member_id]=signed.data.signedUrl;}));
  avatarUrls=found;avatarLoadedAt=Date.now();render();
 }
-function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<div class="top"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><span class="version-tag">Version ${APP_VERSION}</span></div></div><button class="ghost tiny" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button></div>${renderers[page]()}`;}
+
+/* Posteingang: Supabase-RPC, keine Browser-Schreibrechte auf andere Konten. */
+let fxAlerts=[],fxAlertBusy=false,fxAlertLastLoad=0;
+const fxAlertCount=()=>fxAlerts.filter(x=>!x.read_at).length;
+function fxAlertButton(){const n=fxAlertCount();return `<button class="fx-bell" type="button" data-action="fx-inbox" aria-label="Benachrichtigungen, ${n} ungelesen" title="Benachrichtigungen">🔔${n?`<span class="fx-bell-count">${n>99?'99+':n}</span>`:''}</button>`;}
+async function fxLoadAlerts(force=false){
+ if(!cloudClient||!cloudUser)return;
+ if(!force&&Date.now()-fxAlertLastLoad<15000)return;
+ try{const {data:rows,error}=await cloudClient.rpc('fantastix_inbox_list');if(error)throw error;fxAlerts=rows||[];fxAlertLastLoad=Date.now();if(!$('#dialog')?.open)render();}
+ catch(e){console.warn('Benachrichtigungen nicht verfügbar (SQL 18 installieren):',e.message);}
+}
+function fxInboxHTML(){return `<div class="fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button class="close" data-action="close" aria-label="Schließen" type="button">×</button></div><p class="hint">${fxAlertCount()} ungelesen · Die neuesten 100 Meldungen</p>${fxAlerts.length?fxAlerts.map(x=>`<div class="fx-inbox-item ${x.read_at?'':'unread'}"><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<div class="fx-inbox-buttons"><button data-action="fx-read" data-id="${Number(x.id)}" type="button">Als gelesen markieren</button></div>`:''}</div>`).join(''):'<p class="muted">Noch keine Benachrichtigungen.</p>'}<div class="fx-inbox-buttons"><button data-action="fx-read-all" type="button">Alle als gelesen markieren</button></div></div>`;}
+async function fxOpenInbox(){await fxLoadAlerts(true);modal('Benachrichtigungen',fxInboxHTML());}
+async function fxMarkAlerts(id=null){if(!cloudClient||!cloudUser)return;const {error}=await cloudClient.rpc('fantastix_inbox_read',{p_id:id});if(error)return alert('Konnte nicht markieren: '+error.message);await fxLoadAlerts(true);if($('#dialog')?.open)modal('Benachrichtigungen',fxInboxHTML());render();}
+function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<div class="top"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><span class="version-tag">Version ${APP_VERSION}</span></div></div><div class="fx-cloud-head"><button class="ghost tiny" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button>${fxAlertButton()}</div></div>${renderers[page]()}`;}
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
 function homeHTML(){
@@ -175,7 +189,18 @@ function homeHTML(){
    ${nextExcursion()?`<strong class="excursion-title">${esc(nextExcursion().title)}</strong><p class="muted">Organisatoren: ${esc(excursionOrganizers(nextExcursion()))}</p><button class="ghost" data-page="excursions">Events ansehen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new">+ Event planen</button>`}
   </section>`;
 }
-function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card">${members.length?`<div class="list">${members.map(m=>`<div class="item">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<div class="details"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small>${yearOf(today())}: ${yearCount(m.id,yearOf(today()))} · Ewig: ${allTime(m.id)}</small></div><button class="smallbtn" data-action="member-edit" data-id="${m.id}">Bearbeiten</button></div>`).join('')}</div>`:empty('👥','Noch keine Mitglieder')}</div>`;}
+async function loadOnlinePresenceAdmin(){
+ if(!cloudClient||!cloudUser||!cloudReady)return;
+ const {data:rows,error}=await cloudClient.rpc('fantastix_presence_list');
+ if(error){console.warn('Online-Status: SQL 19 erforderlich',error.message);return;}
+ lastOnlineByMember=Object.fromEntries((rows||[]).map(r=>[r.member_id,r.last_seen_at]));
+ if(page==='members')render();
+}
+function memberLastOnline(id){
+ const raw=lastOnlineByMember[id];if(!raw)return 'Zuletzt online: Noch keine Aktivität';
+ const d=new Date(raw);return Number.isFinite(d.getTime())?'Zuletzt online: '+new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)+' Uhr':'Zuletzt online: Unbekannt';
+}
+function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card">${members.length?`<div class="list">${members.map(m=>`<div class="item">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<div class="details"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small>${yearOf(today())}: ${yearCount(m.id,yearOf(today()))} · Ewig: ${allTime(m.id)}</small><small class="member-last-online">${esc(memberLastOnline(m.id))}</small></div><button class="smallbtn" data-action="member-edit" data-id="${m.id}">Bearbeiten</button></div>`).join('')}</div>`:empty('👥','Noch keine Mitglieder')}</div>`;}
 function meetingsHTML(){
   const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date)),next=suggestedOrganizer(today());
   return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
@@ -193,7 +218,7 @@ function excursionForm(id){
  const x=(data.excursions||[]).find(v=>v.id===id)||{id:'',title:'',date:'',endDate:'',location:'',notes:'',organizerIds:[],organizerOther:'',completed:false};
  const already=excursionVotes.filter(v=>v.excursion_id===x.id);
  const ownMemberId=readerProfiles.find(p=>p.user_id===cloudUser?.id)?.member_id;
- const countLabel=()=>`${already.filter(v=>v.status==='yes').length} da / ${already.filter(v=>v.status==='no').length} nicht da`;
+ const countLabel=()=>`${already.filter(v=>v.status==='yes').length} dabei / ${already.filter(v=>v.status==='no').length} nicht dabei`;
  const voteHTML=id?`<div class="separator"></div><h3>Zusagen · <span id="excursion-vote-count">${countLabel()}</span></h3>
  <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Event. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
  ${!ownMemberId?'<p class="hint">Tipp: Dein eigenes Admin-Konto kannst du unter Mehr → Benutzer verwalten einem Mitglied zuordnen.</p>':''}
@@ -203,9 +228,9 @@ function excursionForm(id){
   const v=already.find(v=>v.member_id===m.id),isMine=ownMemberId===m.id;
   return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
    <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
-   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}</div>
+   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}</div>
    <div class="excursion-admin-vote-buttons" role="group" aria-label="Eventszusage für ${esc(m.name)}">
-    ${[['yes','✓ Da'],['no','× Nicht da'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
+    ${[['yes','✓ Dabei'],['no','× Nicht dabei'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
  }).join('')}</div>`:'';
  modal(id?'Event bearbeiten':'Event planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
@@ -224,10 +249,10 @@ function updateExcursionVoteControls(id){
  const dialog=$('#dialog');if(!dialog?.open)return;
  const form=dialog.querySelector('form[data-form="excursion"]');if(!form||form.elements.id.value!==id)return;
  const selected=excursionVotes.filter(v=>v.excursion_id===id);
- const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} da / ${selected.filter(v=>v.status==='no').length} nicht da`;
+ const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} dabei / ${selected.filter(v=>v.status==='no').length} nicht dabei`;
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
-  if(label){label.textContent=(v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();}
+  if(label){label.textContent=(v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;}else note?.remove();}
   for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
    const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
    button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));
@@ -390,12 +415,12 @@ function meetingForm(id){
  const proposed=m.organizerId||(suggestedOrganizer(m.date,m.id)?.id||'');
  modal(id?'Stammtisch bearbeiten':'Neuer Stammtisch',`<form data-form="meeting"><input type="hidden" name="id" value="${esc(m.id)}">
  <div class="field"><label>Datum</label><input type="date" name="date" value="${esc(m.date)}" required></div>
- <div class="field"><label>Uhrzeit</label><input type="time" name="time" value="${esc(m.time||'19:00')}" required></div>
+ <div class="field"><label>Uhrzeit</label><input type="time" name="time" value="${esc(m.time||'18:30')}" required></div>
  <div class="field"><label>Gasthaus</label><input name="location" maxlength="120" value="${esc(m.location)}" placeholder="Gasthaus auswählen oder eingeben" style="width:100%"></div>
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Dabei</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Nicht dabei</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}"><div class="field" style="margin:8px 0"><label>Notiz bei „Dabei“ (für alle sichtbar · optional)</label><input name="present-note-${person.id}" maxlength="160" value="${esc(entry.status==='present'?entry.note||'':'')}" placeholder="z. B. Komme später"></div>${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
 }
 function fineForm(){
@@ -434,7 +459,9 @@ function saveMeeting(fd){
    const status=String(fd.get(`status-${m.id}`)||'');
    if(status==='present'){
      const prev=previousMeeting?.attendance?.[m.id];
-     attendance[m.id]=prev?.status==='present'?prev:{status:'present',source:'admin',updatedAt:new Date().toISOString()};
+     const presentNote=String(fd.get(`present-note-${m.id}`)||'').trim();
+     const changed=prev?.status!=='present'||String(prev.note||'')!==presentNote;
+     attendance[m.id]=changed?{status:'present',note:presentNote,source:'admin',updatedAt:new Date().toISOString()}:prev;
    }
    if(status==='absent'){
      const reason=String(fd.get(`reason-${m.id}`)||'').trim(),note=String(fd.get(`note-${m.id}`)||'').trim();
@@ -455,7 +482,7 @@ function saveMeeting(fd){
    }
  }
  for(const item of fineChanges){const existingFine=data.fines.find(f=>f.meetingId===mtId&&f.memberId===item.memberId&&f.source==='absence');if(existingFine&&item.amount<finePaid(existingFine.id))return alert(`Der Strafbetrag darf nicht unter den bereits bezahlten Betrag ${money(finePaid(existingFine.id))} gesenkt werden.`);}
- const time=String(fd.get('time')||'19:00');if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return alert('Bitte eine gültige Uhrzeit auswählen.');
+ const time=String(fd.get('time')||'18:30');if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return alert('Bitte eine gültige Uhrzeit auswählen.');
  const record={id:mtId,date,time,location,notes,organizerId:organizerId||null,finalized:true,attendance,createdAt:previousMeeting?.createdAt||new Date().toISOString()};
  if(id)data.meetings=data.meetings.map(m=>m.id===id?record:m);else data.meetings.push(record);
  data.fines=data.fines.filter(f=>!(f.meetingId===mtId&&f.source==='absence'&&attendance[f.memberId]?.status!=='absent'));
@@ -706,7 +733,7 @@ async function syncCloud(silent=false){
   }else if(cloudDirty){queueSync();}
   else{cloudStatus='connected';syncMessage='Synchronisiert';}
   await readPublication();
-  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await loadBirthdaysAdmin();}catch(e){console.warn('Geburtstage derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Eventszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
+  if(cloudReady){fxLoadAlerts(true).catch(()=>{});try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await loadBirthdaysAdmin();}catch(e){console.warn('Geburtstage derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Eventszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
  }catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Synchronisierung: '+syncMessage);}
  render();
 }
@@ -739,7 +766,7 @@ function queueSync(){
 function publicSnapshot(opts){
  const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
  const members=(allowMembers||opts.excursions)?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,...(allowMembers?{historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)}:{})})):[];
- const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'19:00',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,source:v.source||'admin'}]))})):[];
+ const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'18:30',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,note:v.status==='present'?v.note||'':'',source:v.source||'admin'}]))})):[];
  const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyDay:cash().monthlyDay||1,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
@@ -777,8 +804,8 @@ async function unpublishPublic(){
 document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
- const action=el.dataset.action,id=el.dataset.id;if(el.dataset.page){page=el.dataset.page;render();window.scrollTo({top:0,behavior:'instant'});return;}
- switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
+ const action=el.dataset.action,id=el.dataset.id;if(el.dataset.page){page=el.dataset.page;render();if(page==='members')loadOnlinePresenceAdmin().catch(console.warn);window.scrollTo({top:0,behavior:'instant'});return;}
+ switch(action){case'fx-inbox':await fxOpenInbox();break;case'fx-read':await fxMarkAlerts(Number(id));break;case'fx-read-all':await fxMarkAlerts(null);break;case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
  case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Event endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();
  if(!navigator.onLine||!cloudUser||!cloudReady)alert('Lokal gelöscht. Im Mitgliederportal verschwindet der Stammtisch, sobald dein Gerät wieder online ist und der neue Cloud-Stand synchronisiert wurde.');
@@ -824,3 +851,9 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){postMonth
 if(ensureCashbook(data)){try{localStorage.setItem(DATA_KEY,JSON.stringify(data));}catch(e){console.warn('Kassa-Migration konnte nicht gesichert werden:',e);}}
 postMonthlyContributions();render();readSnapshots().then(v=>{snapshotCount=v.length;if(v.length){snapshotStatus='Letzter Sicherungsstand: '+new Date(v[0].savedAt).toLocaleString('de-AT');}else if(data.members.length||data.meetings.length||data.fines.length||data.payments.length){queueSnapshot(data);}if(page==='settings')render();}).catch(e=>{snapshotError=true;snapshotStatus='Lokale Sicherung nicht verfügbar: '+(e.message||String(e));});if(getCloudConfig())connectCloud();
 if('serviceWorker'in navigator && window.isSecureContext){navigator.serviceWorker.register('./service-worker.js').catch(console.warn);}
+
+setInterval(()=>{if(!document.hidden&&cloudUser)fxLoadAlerts(true);},45000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser)fxLoadAlerts(true);});
+setTimeout(()=>{if(cloudUser)fxLoadAlerts(true);},3500);
+
+setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser)loadOnlinePresenceAdmin().catch(console.warn);},120000);
