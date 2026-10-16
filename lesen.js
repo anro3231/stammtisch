@@ -457,8 +457,10 @@ async function changePassword(form){
 }
 async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;fxAlerts=[];fxRenderBell();await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};lastOnlineByMember={};lastOnlineChecked=0;birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason='',note=''){
- if(busy||!data||!profile?.member_id)return;
- const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
+ if(busy)return alert('Bitte warten: Es läuft noch ein Vorgang. Danach erneut speichern.');
+ if(!data||!profile?.member_id)return alert('Dein Mitgliedskonto ist noch nicht vollständig geladen. Bitte die Seite neu öffnen.');
+ const m=data.meetings.find(x=>x.id===meetingId);
+ if(!m)return alert('Stammtisch nicht gefunden. Bitte die Seite neu laden.');
  const cutoff=meetingVoteDeadline(m);
  if(!cutoff||Date.now()>=cutoff.getTime())return alert('Die Abstimmungsfrist ist abgelaufen. Nur der Admin kann die Anwesenheit noch ändern.');
  if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
@@ -470,7 +472,15 @@ async function castVote(meetingId,status,reason='',note=''){
    });
    if(error)throw error;
    await refresh();
- }catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
+   const saved=data?.meetings?.find(x=>x.id===meetingId)?.attendance?.[profile?.member_id];
+   if(saved?.status!==status){
+     alert('Die Datenbank hat den Speichervorgang beantwortet, aber die neue Stimme ist in der veröffentlichten Ansicht nicht sichtbar. Bitte dem Admin melden.');
+   }else if(status==='present' && (saved.note||'')!==note.trim()){
+     alert('Deine Zusage wurde gespeichert, aber die Notiz stimmt noch nicht überein. Bitte dem Admin melden.');
+   }else{
+     alert(status==='present'?'Deine Zusage „Dabei“ wurde gespeichert.':'Deine Absage „Nicht dabei“ wurde gespeichert.');
+   }
+ }catch(e){alert('Abstimmung nicht gespeichert: '+(e?.message||String(e)));}
  finally{busy=false;if(data)renderApp();}
 }
 async function voteExcursion(id,status,note=''){
