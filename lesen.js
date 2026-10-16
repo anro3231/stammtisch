@@ -1,4 +1,4 @@
-/* FantastiX 3.7.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.8.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -11,7 +11,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -42,6 +42,11 @@ function rsvpRoster(m){
  }).join('')}</div></div>`;
 }
 
+function tripOrganizers(x){const names=(x.organizerIds||[]).map(memberName).filter(Boolean);if(String(x.organizerOther||'').trim())names.push(x.organizerOther.trim());return names.length?names.join(', '):'Noch offen';}
+function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||x.date>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
+function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
+function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,no:votes.filter(v=>v.status==='no').length};}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} da · ${excursionCount(x.id).no} nicht da</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${esc(m.name)}</span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span></div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -69,10 +74,10 @@ function renderGate(msg=''){
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
- const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')],['profile','Profil','◉',true]].filter(t=>t[3]);
+ const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Ausflüge','✈',section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')],['profile','Profil','◉',true]].filter(t=>t[3]);
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
- $('#content').innerHTML=({dashboard,meetings,ranking,members,cash,profilePage}[tab])();
+ $('#content').innerHTML=({dashboard,meetings,excursions,ranking,members,cash,profilePage}[tab])();
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
@@ -87,6 +92,7 @@ function dashboard(){
   <div class="metric"><small>Ewige Führung</small>${leaderHTML(all)}</div>
   <div class="metric"><small>Kontostand</small><div class="value balance-tile">${section('cash')?money(data.cashbook?.balanceCents):'–'}</div><small>Offene Strafen: ${pending!==null?money(Math.max(0,pending)):'–'}</small></div>
  </div>
+ ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Ausflug</h2><span class="chip">${nextTrip()?.date?dateLabel(nextTrip().date):nextTrip()?'Termin offen':'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Ausflüge ansehen →</button>`:'<p class="muted">Noch kein Ausflug geplant.</p>'}</section>`:''}
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${votePanel(next,true)}${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-tab="meetings">Alle ansehen →</button></div>`:''}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
@@ -118,6 +124,15 @@ function meetings(){
  </section>`).join(''):empty('Noch keine Stammtische.')}`;
 }
 
+function excursions(){
+ const sorted=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
+ return `${heading('Ausflüge')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
+ ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&x.date<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':x.date?dateLabel(x.date):'Termin offen'}</span></div>
+ ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
+ <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
+ <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht da</button></div>
+ <small class="muted">Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Ausflüge eingetragen.')}`;
+}
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
  const years=[...new Set(['2026',currentYear(),...data.meetings.map(m=>m.date.slice(0,4))])].sort().reverse();
@@ -154,7 +169,14 @@ async function refresh(){
   if(!pub.data?.content){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
   const d=pub.data.content;
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
+  if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Ausflugsdaten.');d.excursions=d.excursions||[];
   data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
+  if(section('excursions')){
+    const res=await cloud.rpc('fantastix_excursion_votes_read');
+    if(res.error){excursionVoteError='Ausflugszusagen derzeit nicht verfügbar. SQL-Update 07 prüfen.';excursionVotes=[];console.warn(res.error);}
+    else{excursionVotes=res.data||[];excursionVoteError='';}
+  }else{excursionVotes=[];excursionVoteError='';}
+
   renderApp();
  }catch(e){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');}
 }
@@ -222,6 +244,18 @@ async function castVote(meetingId,status,reason=''){
  }catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
  finally{busy=false;if(data)renderApp();}
 }
+async function voteExcursion(id,status){
+ if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
+ const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&trip.date<today()))return alert('Dieser Ausflug ist nicht mehr zur Anmeldung offen.');
+ if(!['yes','no'].includes(status))return;
+ busy=true;renderApp();
+ try{
+   const {error}=await cloud.rpc('fantastix_excursion_vote',{p_excursion_id:id,p_status:status});
+   if(error)throw error;
+   await refresh();
+ }catch(e){alert('Rückmeldung nicht gespeichert: '+(e.message||String(e)));}
+ finally{busy=false;if(data)renderApp();}
+}
 function askAbsenceReason(meetingId){
  const meeting=data?.meetings?.find(m=>m.id===meetingId);
  const saved=meeting?effective(meeting,profile?.member_id):null;
@@ -248,6 +282,7 @@ document.addEventListener('click',e=>{
  const nav=e.target.closest('[data-tab]');if(nav){tab=nav.dataset.tab;renderApp();scrollTo({top:0,behavior:'instant'});return;}
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
  if(e.target.closest('#close-absence,#cancel-absence')){$('#absence-dialog').close();return;}
+ const excursion=e.target.closest('[data-excursion-vote]');if(excursion){voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
  const vote=e.target.closest('[data-vote]');if(vote){
    if(vote.dataset.vote==='absent')askAbsenceReason(vote.dataset.meetingId);
    else castVote(vote.dataset.meetingId,'present');

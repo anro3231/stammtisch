@@ -1,0 +1,67 @@
+FANTASTIX 3.8.0 – AUSFLÜGE
+==========================
+
+Neu:
+- Eigener Menüpunkt „Ausflüge“ für den Administrator und freigeschaltete Leser.
+- Name, Ziel/Ort, Beschreibung, optionales Datum (kann nachgetragen werden).
+- Mehrere Organisatoren über Mitgliedsauswahl; zusätzlich freie Namen möglich.
+- Leser können „Da“ / „Nicht da“ für sich selbst auswählen, ohne Abwesenheitsgrund.
+- Alle freigeschalteten Leser sehen, wer zugesagt oder abgesagt hat, und wer noch offen ist.
+- Ausflüge beeinflussen NICHT die Stammtisch-Anwesenheit, Jahres-/ewige Rangliste,
+  Strafen, Zahlungen oder die Stammtischkassa.
+- Dashboard: Kachel „Nächster Ausflug“ mit Termin (oder „Termin offen“) und Organisatoren.
+- Ausflüge können als „abgeschlossen“ markiert werden. Danach keine neuen Zusagen.
+
+SICHERE UPDATE-REIHENFOLGE
+=========================
+1. In der bisherigen FantastiX-Admin-App: Mehr -> JSON exportieren. Backup sicher speichern.
+2. Supabase -> SQL Editor -> NEUES SQL 07_AUSFLUEGE_UND_ZUSAGEN.sql ausführen.
+   Voraussetzungen: Die früheren Migrationen 04, 05 und 06 sind bereits aktiv.
+   SQL 07 fügt nur die separate Ausflugs-Zusagen-Tabelle und gesicherte Funktionen hinzu.
+3. Dateien aus FantastiX_v3_8_GitHub_Pages.zip entpacken und in dein bestehendes
+   GitHub-Repository „andi“ hochladen, gleichnamige Dateien ersetzen.
+4. WICHTIG: Deine vorhandene cloud-config.js NICHT hochladen/ersetzen; diese bleibt
+   im Repository unverändert. Niemals Supabase service_role/secret Keys veröffentlichen.
+5. Nach GitHub-Pages-Bereitstellung FantastiX öffnen; Version 3.8.0 kontrollieren.
+   Falls das iPhone eine ältere Fassung lädt:
+   https://anro3231.github.io/andi/aktualisieren.html
+   Dort „App aktualisieren“ wählen. KEINE Browserdaten löschen.
+6. Unter Mehr -> Cloud & Freigaben „Ausflüge & Zusagen (inkl. Mitgliedernamen)“
+   auswählen und „Auswahl speichern & veröffentlichen“ antippen.
+   Optional automatische Veröffentlichung aktivieren, wenn neue Ausflüge nach jeder
+   Admin-Änderung ohne einen weiteren Schritt sichtbar sein sollen.
+7. Als Admin -> Ausflüge -> + Ausflug planen. Bezeichnung, optional Datum,
+   Ziel und einen oder mehrere Organisatoren eintragen, speichern.
+8. Ein bereits verknüpftes Mitglied öffnet lesen.html -> Ausflüge und
+   kann „Da“ bzw. „Nicht da“ anklicken. Die Rückmeldungen werden in einer
+   separaten Datenbank-Tabelle gespeichert. Sie ändern KEINE Stammtisch-Rangliste.
+
+SPEICHER- UND DATENSCHUTZHINWEISE
+================================
+- Ausflugs-Details liegen als separate Liste „excursions“ im privaten JSON-Dokument.
+  Ältere FantastiX-Backups ohne diese Liste funktionieren weiterhin.
+- Zusagen liegen getrennt in der Tabelle public.fantastix_excursion_votes.
+  Sie werden NICHT in die bisherigen JSON-Backups aufgenommen. Die Tabelle sollte
+  daher in regelmäßige Supabase-Datenbank-Backups eingeschlossen werden.
+- Im Leserportal sind Ausflüge nur sichtbar, wenn sie vom Admin veröffentlicht
+  wurden und das Benutzerkonto einem FantastiX-Mitglied zugeordnet wurde.
+- Bei Veröffentlichung von Ausflügen werden die Mitgliedernamen auch dann
+  mit übertragen, wenn die separate Freigabe „Mitglieder & Ranglisten“ aus ist.
+  Historische Anwesenheitszahlen werden in diesem Fall NICHT übertragen.
+- Ein Ausflug mit bereits vergangenem Datum oder dem Status „abgeschlossen“
+  kann nicht mehr neu beantwortet werden; ein undatierter geplanter Ausflug bleibt offen.
+- Zu- und Absagen sind reine PLANUNGSINFORMATIONEN, keine bestätigte Anwesenheit.
+
+SERVERSEITIGE ZUGRIFFSRECHTE TESTEN
+==================================
+Im Browser bitte nach der Migration Folgendes prüfen:
+- NICHT angemeldet: kein Zugriff auf Ausflugszusagen.
+- Registriert, aber NICHT mit Mitglied verknüpft: kein Zugriff.
+- Freigeschaltet: nur eigene Zu-/Absage speichern; fremde Stimmen nur lesen.
+- Bei deaktivierter Ausflugsfreigabe: kein Zugriff für Leser.
+- Als Admin: alle Rückmeldungen sehen, Ausflüge anlegen/bearbeiten/abschließen.
+- Direktes Lesen/Schreiben der Tabelle fantastix_excursion_votes über PostgREST
+  muss auch als freigeschalteter Leser verweigert werden (nur RPC erlaubt).
+
+Eine echte Verbindung mit deinem Supabase-Projekt kann hier nicht vorgetestet werden.
+Führe diese Tests nach dem Update mit getrennten Benutzerkonten aus.
