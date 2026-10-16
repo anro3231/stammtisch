@@ -114,6 +114,7 @@ function renderApp(){
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
  $('#content').innerHTML=(readerInboxOpen?readerInbox():'')+({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
+ const bell=$('#reader-bell');if(bell){const count=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;bell.innerHTML='🔔'+(count?`<b>${count}</b>`:'');}
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
@@ -137,10 +138,10 @@ function dashboard(){
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
  const own=effective(m,profile.member_id);
- const locked=!!(own&&coalesceSource(own)!=='member');
+ const locked=false; // Admin-Korrekturen sperren Mitglieder nicht vor Fristablauf
  const deadline=deadlines.get(m.id),closed=deadline?Date.now()>=new Date(deadline).getTime():true;
  const status=own?.status||'';
- const summary=locked?'Vom Admin korrigiert':closed?'Abstimmung geschlossen':`Bis ${deadlineLabel(deadline)}`;
+ const summary=closed?'Abstimmung geschlossen':`Frist: ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Da</button>
  <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht da</button></div>
@@ -169,8 +170,8 @@ function excursions(){
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':tripDateLabel(x)}</span></div>
  ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
  <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>× Nicht da</button></div>
- <small class="muted">${own?.admin_locked?'Deine Rückmeldung wurde vom Admin korrigiert.':'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
+ <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht da</button></div>
+ <small class="muted">${'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
@@ -203,7 +204,7 @@ async function deleteMyBirthday(){
 
 function lastSeenReader(id){const v=readerPresence[id];if(!v)return 'Noch keine Aktivität';const t=new Date(v);if(Date.now()-t.getTime()<180000)return '🟢 Gerade online';return 'Zuletzt online: '+t.toLocaleString('de-AT',{dateStyle:'short',timeStyle:'short'});}
 async function refreshReaderExtras(){if(!cloud||!user||!profile?.member_id)return;try{await cloud.rpc('fantastix_touch_presence');const p=await cloud.from('fantastix_activity').select('member_id,last_seen_at');if(!p.error)readerPresence=Object.fromEntries((p.data||[]).map(x=>[x.member_id,x.last_seen_at]));}catch(e){console.warn('Online-Status SQL 20:',e.message);}
- try{const r=await cloud.from('fantastix_updates').select('id,kind,title,body,created_at').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;readerUpdates=r.data||[];const ids=readerUpdates.map(x=>x.id);readerUpdateReads=new Set();if(ids.length){const q=await cloud.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',user.id);if(!q.error)readerUpdateReads=new Set((q.data||[]).map(x=>x.update_id));}const bell=$('#reader-bell');if(bell)bell.innerHTML='🔔'+(readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length?' <b>'+readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length+'</b>':'');}catch(e){console.warn('Benachrichtigungen SQL 20:',e.message);}}
+ try{const r=await cloud.from('fantastix_updates').select('id,kind,title,body,created_at').neq('kind','vote').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;readerUpdates=r.data||[];const ids=readerUpdates.map(x=>x.id);readerUpdateReads=new Set();if(ids.length){const q=await cloud.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',user.id);if(!q.error)readerUpdateReads=new Set((q.data||[]).map(x=>x.update_id));}const bell=$('#reader-bell');if(bell)bell.innerHTML='🔔'+(readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length?' <b>'+readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length+'</b>':'');}catch(e){console.warn('Benachrichtigungen SQL 20:',e.message);}}
 function readerBell(){const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;return `<button type="button" id="reader-bell" class="reader-bell" aria-label="Benachrichtigungen">🔔 ${unread?`<b>${unread}</b>`:''}</button>`;}
 function readerInbox(){return `<section class="card fx-reader-inbox"><div class="row"><h2>🔔 Benachrichtigungen</h2><button class="smallbtn" id="reader-inbox-close">Schließen</button></div><p class="muted tiny">${readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length} ungelesen</p>${readerUpdates.map(x=>`<div class="fx-inbox-item ${readerUpdateReads.has(x.id)?'':'unread'}"><small>${esc(x.kind)}</small><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${dateTime(x.created_at)}</small></div>`).join('')||'<p>Keine Benachrichtigungen</p>'}<button class="ghost" id="reader-read-all">Alle als gelesen markieren</button></section>`;}
 let readerInboxOpen=false;
@@ -432,7 +433,6 @@ async function castVote(meetingId,status,reason=''){
  const deadline=deadlines.get(meetingId);
  if(!deadline||Date.now()>=new Date(deadline).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
  const own=effective(m,profile.member_id);
- if(own&&coalesceSource(own)!=='member')return alert('Der Admin hat die Stimme korrigiert.');
  if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
  busy=true;renderApp();
  try{
@@ -461,7 +461,7 @@ async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
  const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Event ist nicht mehr zur Anmeldung offen.');
  if(!['yes','no'].includes(status))return;
- if(excursionOwn(trip)?.admin_locked)return alert('Der Administrator hat deine Rückmeldung korrigiert.');
+ 
  busy=true;renderApp();
  try{
    const {error}=await cloud.rpc('fantastix_excursion_vote',{p_excursion_id:id,p_status:status});

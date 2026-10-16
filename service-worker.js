@@ -1,4 +1,4 @@
-const CACHE='fantastix-v3.15.1';
+const CACHE='fantastix-v3.16.0';
 const FILES=['./','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung

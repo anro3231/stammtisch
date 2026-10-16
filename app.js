@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FANTASTIX_VERSION;
+const APP_VERSION = window.FX_VERSION || "3.16.1";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -153,7 +153,8 @@ async function loadMemberAvatars(force=false){
 
 /* Posteingang: Supabase-RPC, keine Browser-Schreibrechte auf andere Konten. */
 let fxAlerts=[],fxAlertBusy=false,fxAlertLastLoad=0;
-const fxAlertCount=()=>fxAlerts.filter(x=>!x.read_at).length+fxNewAlerts.filter(x=>!x.read_at).length;
+const fxVisibleLegacyAlerts=()=>fxAlerts.filter(x=>!/(stammtisch.?abstimmung|event.?abstimmung)/i.test(String(x.title||'')));
+const fxAlertCount=()=>fxVisibleLegacyAlerts().filter(x=>!x.read_at).length+fxNewAlerts.filter(x=>!x.read_at).length;
 function fxAlertButton(){const n=fxAlertCount();return `<button class="fx-bell" type="button" data-action="fx-inbox" aria-label="Benachrichtigungen, ${n} ungelesen" title="Benachrichtigungen">🔔${n?`<span class="fx-bell-count">${n>99?'99+':n}</span>`:''}</button>`;}
 async function fxLoadAlerts(force=false){
  if(!cloudClient||!cloudUser)return;
@@ -164,9 +165,30 @@ async function fxLoadAlerts(force=false){
 let fxNewAlerts=[];
 async function fxLoadNewAlerts(){if(!cloudClient||!cloudUser)return;try{const r=await cloudClient.from('fantastix_updates').select('id,kind,title,body,created_at').eq('recipient_member_id','ADMIN').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;const ids=(r.data||[]).map(x=>x.id);let reads=[];if(ids.length){const q=await cloudClient.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',cloudUser.id);if(q.error)throw q.error;reads=(q.data||[]).map(x=>x.update_id);}fxNewAlerts=(r.data||[]).map(x=>({...x,read_at:reads.includes(x.id)?x.created_at:null}));}catch(e){console.warn('Neue Meldungen: SQL 20 erforderlich',e.message);}}
 async function fxReadNew(id){if(!cloudClient||!cloudUser)return;const list=id?[id]:fxNewAlerts.filter(x=>!x.read_at).map(x=>x.id);if(list.length){const r=await cloudClient.from('fantastix_update_reads').upsert(list.map(update_id=>({update_id,user_id:cloudUser.id})),{onConflict:'update_id,user_id'});if(r.error)return alert(r.error.message);}await fxLoadNewAlerts();fxOpenInbox();}
-function fxInboxHTML(){return `<div class="fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button class="close" data-action="close" aria-label="Schließen" type="button">×</button></div><p class="hint">${fxAlertCount()} ungelesen · Die neuesten 100 Meldungen</p>${fxNewAlerts.map(x=>`<div class="fx-inbox-item fx-update ${x.read_at?'':'unread'}"><span class="fx-type">${esc(x.kind==='vote'?'🗳️ Abstimmung':'📣 Info')}</span><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<button class="smallbtn" data-action="fx-new-read" data-id="${Number(x.id)}">Gelesen</button>`:''}</div>`).join('')}${fxNewAlerts.some(x=>!x.read_at)?'<button class="smallbtn" data-action="fx-new-read-all">Neue Meldungen als gelesen markieren</button>':''}${fxAlerts.length?fxAlerts.map(x=>`<div class="fx-inbox-item ${x.read_at?'':'unread'}"><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<div class="fx-inbox-buttons"><button data-action="fx-read" data-id="${Number(x.id)}" type="button">Als gelesen markieren</button></div>`:''}</div>`).join(''):(fxNewAlerts.length?'':'<p class="muted">Noch keine Benachrichtigungen.</p>')}<div class="fx-inbox-buttons"><button data-action="fx-read-all" type="button">Alle als gelesen markieren</button></div></div>`;}
+function fxInboxHTML(){
+ const old=fxVisibleLegacyAlerts(), fresh=fxNewAlerts;
+ const item=(x,isNew)=>`<article class="fx-inbox-item ${x.read_at?'':'unread'}"><div class="fx-inbox-item-top"><span class="fx-type">${isNew?(x.kind==='vote'?'🗳️ Abstimmung':'📣 Info'):'📣 Hinweis'}</span>${!x.read_at?'<span class="fx-unread-dot" aria-label="Ungelesen"></span>':''}</div><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><div class="fx-inbox-item-bottom"><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<button class="smallbtn" data-action="${isNew?'fx-new-read':'fx-read'}" data-id="${Number(x.id)}" type="button">Gelesen</button>`:''}</div></article>`;
+ return `<div class="fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button class="close" data-action="close" aria-label="Schließen" type="button">×</button></div><div class="fx-inbox-summary"><span>${fxAlertCount()} ungelesen · ${fresh.length+old.length} Meldungen</span><button class="smallbtn" data-action="fx-read-all" type="button" ${fxAlertCount()?'':'disabled'}>Alle als gelesen</button></div>${fresh.map(x=>item(x,true)).join('')}${old.map(x=>item(x,false)).join('')||(!fresh.length?'<p class="muted">Noch keine Benachrichtigungen.</p>':'')}</div>`;
+}
 async function fxOpenInbox(){await Promise.all([fxLoadAlerts(true),fxLoadNewAlerts()]);modal('Benachrichtigungen',fxInboxHTML());}
-async function fxMarkAlerts(id=null){if(!cloudClient||!cloudUser)return;const {error}=await cloudClient.rpc('fantastix_inbox_read',{p_id:id});if(error)return alert('Konnte nicht markieren: '+error.message);await fxLoadAlerts(true);if($('#dialog')?.open)modal('Benachrichtigungen',fxInboxHTML());render();}
+async function fxMarkAlerts(id=null){
+ if(!cloudClient||!cloudUser)return;
+ let problems=[];
+ // Neue Meldungen werden pro Benutzer in fantastix_update_reads quittiert.
+ if(id===null){
+  const ids=fxNewAlerts.filter(x=>!x.read_at).map(x=>x.id);
+  if(ids.length){const r=await cloudClient.from('fantastix_update_reads').upsert(ids.map(update_id=>({update_id,user_id:cloudUser.id})),{onConflict:'update_id,user_id'});if(r.error)problems.push('Neue Meldungen: '+r.error.message);else fxNewAlerts.forEach(x=>{if(ids.includes(x.id))x.read_at=x.created_at;});}
+ }
+ // Alte Benachrichtigungen sind ein separates System. Fehler dürfen das
+ // Quittieren der neuen Meldungen nicht verhindern.
+ if(id!==null||fxVisibleLegacyAlerts().some(x=>!x.read_at)){
+  const {error}=await cloudClient.rpc('fantastix_inbox_read',{p_id:id});
+  if(error)problems.push('Ältere Meldungen: '+error.message);
+ }
+ await Promise.all([fxLoadAlerts(true),fxLoadNewAlerts()]);
+ if($('#dialog')?.open)modal('Benachrichtigungen',fxInboxHTML());render();
+ if(problems.length)alert('Ein Teil der Meldungen konnte nicht als gelesen markiert werden: '+problems.join(' | '));
+}
 function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<div class="top"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><span class="version-tag">Version ${APP_VERSION}</span></div></div><div class="fx-cloud-head"><button class="ghost tiny" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button>${fxAlertButton()}</div></div>${renderers[page]()}`;}
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
