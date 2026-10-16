@@ -1,4 +1,5 @@
-/* FantastiX 3.10.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
+/* FantastiX 3.11.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -101,10 +102,10 @@ function renderGate(msg=''){
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
- const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Ausflüge','✈',section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')]].filter(t=>t[3]);
+ const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Events','✈',section('excursions')],['calendar','Kalender','▦',section('meetings')||section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')]].filter(t=>t[3]);
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
- $('#content').innerHTML=({dashboard,meetings,excursions,ranking,members,cash}[tab])();
+ $('#content').innerHTML=({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
@@ -113,7 +114,7 @@ function dashboard(){
  const yr=section('members')?leaders(currentYear()):[],all=section('members')?leaders(null):[];
  const pending=section('fines')?data.fines.reduce((s,f)=>s+n(f.amountCents),0)-data.payments.reduce((s,p)=>s+n(p.amountCents),0):null;
  const leaderHTML=lst=>lst.length?`<div class="leader-list">${lst.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${lst[0].count} Teilnahmen</small>`:'<div class="value">–</div>';
- return `${heading('Dashboard')}<div class="metric-grid dashboard-v36">
+ return `${heading('Dashboard')}${pushPromptHTML()}<div class="metric-grid dashboard-v36">
   <div class="metric"><small>Tage bis zum Stammtisch</small><div class="value">${next?daysUntil(next.date):'–'}</div></div>
   <div class="metric"><small>Jahresführung ${currentYear()}</small>${leaderHTML(yr)}</div>
   <div class="metric"><small>Ewige Führung</small>${leaderHTML(all)}</div>
@@ -122,7 +123,7 @@ function dashboard(){
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${votePanel(next,true)}${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-tab="meetings">Alle ansehen →</button></div>`:''}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
- ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Ausflug</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Ausflüge ansehen →</button>`:'<p class="muted">Noch kein Ausflug geplant.</p>'}</section>`:''}`;
+ ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}`;
 }
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
@@ -151,14 +152,15 @@ function meetings(){
  </section>`).join(''):empty('Noch keine Stammtische.')}`;
 }
 
+function calendarPage(){const shown={meetings:section('meetings')?data.meetings:[],excursions:section('excursions')?data.excursions:[]};return `${heading('Kalender')}${window.FantastiXCalendar.render(shown,calendarMonth,calendarSelected,false)}`;}
 function excursions(){
  const sorted=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
- return `${heading('Ausflüge')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
+ return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':tripDateLabel(x)}</span></div>
  ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
  <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>× Nicht da</button></div>
- <small class="muted">${own?.admin_locked?'Deine Rückmeldung wurde vom Admin korrigiert.':'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Ausflüge eingetragen.')}`;
+ <small class="muted">${own?.admin_locked?'Deine Rückmeldung wurde vom Admin korrigiert.':'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
@@ -215,6 +217,49 @@ async function acknowledgeNotice(){
  }finally{noticeAcknowledging=false;showNextNotice();}
 }
 function profilePage(){return `${heading('Mein Profil')}<section class="card"><h2>${esc(member(profile.member_id)?.name||'Mitglied')}</h2><div class="my-photo-card">${avatarFor(profile.member_id)}<label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div><p class="muted">${esc(displayAccount())}</p><p class="hint">Mitgliedsnummer: ${esc(member(profile.member_id)?.memberNumber||'–')}</p><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input type="password" name="newPassword" minlength="8" autocomplete="new-password" required></div><div class="field"><label>Passwort wiederholen</label><input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></div><button type="submit" class="ghost">Passwort ändern</button></form><div class="stack"><button type="button" class="ghost" id="reader-refresh">Aktualisieren</button><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></div></section>`;}
+
+/* FantastiX 3.11: Web Push - Opt-in nur nach ausdruecklichem Tippen. */
+let pushBusy=false, pushEnabled=false;
+const PUSH_CONFIG=()=>String(window.FANTASTIX_PUSH_PUBLIC_KEY||'');
+function base64UrlToUint8Array(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+function pushSupported(){return window.isSecureContext&&'Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window&&!!PUSH_CONFIG();}
+function pushPromptHTML(){
+ if(!pushSupported())return '<section class="push-setup"><strong>Mitteilungen</strong><p>Für Push-Mitteilungen diese App auf einem unterstützten Gerät als Web-App installieren (iPhone: Safari → Teilen → Zum Home-Bildschirm) und erneut öffnen.</p></section>';
+ if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen und Admin-Nachrichten. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
+ return `<section class="push-setup"><strong>Stammtisch-Mitteilungen</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen und Admin-Nachrichten. Es gibt keine Fristerinnerungen.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 Mitteilungen erlauben</button><p class="push-status">${Notification.permission==='denied'?'Mitteilungen sind für FantastiX in deinen Geräteeinstellungen blockiert.':''}</p></section>`;
+}
+async function detectPushSubscription(){
+ if(!pushSupported()||!user||!profile?.member_id)return;
+ try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
+ if(tab==='dashboard'&&data)renderApp();
+}
+async function enablePush(){
+ if(pushBusy||!cloud||!user||!profile?.member_id)return;
+ if(!pushSupported())return alert('Push-Mitteilungen werden hier nicht unterstützt. Auf dem iPhone musst du FantastiX zuerst auf dem Home-Bildschirm installieren.');
+ pushBusy=true;
+ try{
+  // Prompt unmittelbar infolge des Nutzer-Tipps aufrufen (iOS-Anforderung).
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Bitte prüfe die iPhone-Einstellungen.');
+  const reg=await navigator.serviceWorker.register('./service-worker.js');
+  let sub=await reg.pushManager.getSubscription();
+  const vapid=base64UrlToUint8Array(PUSH_CONFIG());
+  if(sub&&sub.options?.applicationServerKey){const current=new Uint8Array(sub.options.applicationServerKey);if(current.length!==vapid.length||current.some((v,i)=>v!==vapid[i])){await sub.unsubscribe();sub=null;}}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapid});
+  const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});
+  if(error)throw error;
+  pushEnabled=true;alert('Mitteilungen sind aktiviert.');
+ }catch(e){alert('Push-Aktivierung fehlgeschlagen: '+(e.message||String(e))+'\nBitte Supabase-SQL-Update 10 und die Edge-Funktion prüfen.');}
+ finally{pushBusy=false;renderApp();}
+}
+async function disablePush(){
+ if(!cloud||!user)return;
+ try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
+  if(sub){const {error}=await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});if(error)throw error;await sub.unsubscribe();}
+  pushEnabled=false;renderApp();
+ }catch(e){alert('Deaktivieren fehlgeschlagen: '+(e.message||String(e)));}
+}
+
 async function initClient(){
  const cfg=window.FANTASTIX_CLOUD;
  if(!cfg||!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(String(cfg.url||''))||!String(cfg.key||'').startsWith('sb_publishable_')&&!String(cfg.key||'').startsWith('eyJ'))throw Error('Cloud noch nicht eingerichtet.');
@@ -236,17 +281,17 @@ async function refresh(){
   if(!pub.data?.content){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
   const d=pub.data.content;
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
-  if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Ausflugsdaten.');d.excursions=d.excursions||[];
+  if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Eventsdaten.');d.excursions=d.excursions||[];
   data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
   if(section('excursions')){
     const res=await cloud.rpc('fantastix_excursion_votes_read_v2');
-    if(res.error){excursionVoteError='Ausflugszusagen derzeit nicht verfügbar. SQL-Update 09 prüfen.';excursionVotes=[];console.warn(res.error);}
+    if(res.error){excursionVoteError='Eventszusagen derzeit nicht verfügbar. SQL-Update 09 prüfen.';excursionVotes=[];console.warn(res.error);}
     else{excursionVotes=res.data||[];excursionVoteError='';}
   }else{excursionVotes=[];excursionVoteError='';}
 
   try{await loadAvatars();}catch(e){console.warn('Profilfotos nicht verfügbar:',e);}
   try{const res=await cloud.rpc('fantastix_notice_list');if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}
-  renderApp();
+  renderApp();detectPushSubscription();
  }catch(e){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');}
 }
 async function doAuth(form){
@@ -294,7 +339,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -315,7 +360,7 @@ async function castVote(meetingId,status,reason=''){
 }
 async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
- const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Ausflug ist nicht mehr zur Anmeldung offen.');
+ const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Event ist nicht mehr zur Anmeldung offen.');
  if(!['yes','no'].includes(status))return;
  if(excursionOwn(trip)?.admin_locked)return alert('Der Administrator hat deine Rückmeldung korrigiert.');
  busy=true;renderApp();
@@ -348,10 +393,20 @@ document.addEventListener('submit',e=>{
 document.addEventListener('click',e=>{
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
+ if(e.target.closest('#push-enable')){enablePush();return;}
+ if(e.target.closest('#push-disable')){disablePush();return;}
  if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
  if(e.target.closest('#notice-ack')){acknowledgeNotice();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
- const nav=e.target.closest('[data-tab]');if(nav){tab=nav.dataset.tab;renderApp();scrollTo({top:0,behavior:'instant'});return;}
+ const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
+ const nav=e.target.closest('[data-tab]');if(nav){
+ tab=nav.dataset.tab;scrollTo({top:0,behavior:'instant'});
+ if(user&&navigator.onLine&&['dashboard','meetings','calendar'].includes(tab)){
+  $('#content').innerHTML='<section class="card"><p class="muted">Aktuelle Termine werden geladen …</p></section>';
+  refresh();
+ } else renderApp();
+ return;
+ }
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
  if(e.target.closest('#close-absence,#cancel-absence')){$('#absence-dialog').close();return;}
  const excursion=e.target.closest('[data-excursion-vote]');if(excursion){voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
@@ -363,6 +418,7 @@ document.addEventListener('click',e=>{
 $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
 $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
 document.addEventListener('change',e=>{if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
+navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar'].includes(e.data.tab)){tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();

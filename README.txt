@@ -1,3 +1,6 @@
-FantastiX 3.10.0 – Ausflugsabstimmung im Admin-Modus
-Lies ANLEITUNG_3_10.txt im Supabase-Update- oder Komplettpaket.
-Unbedingt bisherige cloud-config.js im GitHub-Repository behalten.
+FantastiX v3.11.0 – Events, Kalender, Web Push und gelöschte Stammtische.
+
+GitHub-Pages-Dateien: index.html, lesen.html, app.js, lesen.js, calendar-view.js, push-config.js, service-worker.js, manifest-Dateien, Icons.
+
+Die bestehende cloud-config.js UNVERÄNDERT lassen.
+Supabase-Setup nur privat verwenden und NICHT auf GitHub hochladen.

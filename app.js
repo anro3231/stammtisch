@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.10.0';
+const APP_VERSION = '3.11.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -25,7 +25,7 @@ function rotationMembers(){return data.members.filter(m=>m.active!==false&&membe
 function suggestedOrganizer(date,excludeId=''){const candidates=rotationMembers();if(!candidates.length)return null;const last=[...data.meetings].filter(m=>m.id!==excludeId&&m.date<=date&&m.organizerId&&memberNo(member(m.organizerId))!==null).sort((a,b)=>b.date.localeCompare(a.date)||String(b.createdAt||'').localeCompare(String(a.createdAt||'')))[0];const previousNo=memberNo(member(last?.organizerId));return candidates.find(m=>previousNo!==null&&memberNo(m)>previousNo)||candidates[0];}
 function yearCount(id,year){return stats(id,year).present+(String(year)==='2026'?n(member(id)?.historical2026Count):0);}
 
-const assertData = v => {if(!v||typeof v!=='object'||!Array.isArray(v.members)||!Array.isArray(v.meetings)||!Array.isArray(v.fines)||!Array.isArray(v.payments))throw Error('Ungültiges Datenformat.');if(v.excursions===undefined)v.excursions=[];if(!Array.isArray(v.excursions))throw Error('Ungültige Ausflüge.');return v;};
+const assertData = v => {if(!v||typeof v!=='object'||!Array.isArray(v.members)||!Array.isArray(v.meetings)||!Array.isArray(v.fines)||!Array.isArray(v.payments))throw Error('Ungültiges Datenformat.');if(v.excursions===undefined)v.excursions=[];if(!Array.isArray(v.excursions))throw Error('Ungültige Events.');return v;};
 function validateBackup(v){
  assertData(v);
  if(JSON.stringify(v).length>10*1024*1024)throw Error('Backup zu groß.');
@@ -38,8 +38,8 @@ function validateBackup(v){
  const nums=v.members.map(memberNo).filter(x=>x!==null);
  if(new Set(nums).size!==nums.length)throw Error('Doppelte Mitgliedsnummern.');
  if(!v.meetings.every(m=>/^\d{4}-\d{2}-\d{2}$/.test(m.date||'')&&m.attendance&&typeof m.attendance==='object'&&!Array.isArray(m.attendance)))throw Error('Ungültige Stammtische.');
- if(v.excursions.length>2000||!v.excursions.every(x=>x&&typeof x==='object'&&!Array.isArray(x)&&typeof x.id==='string'&&x.id.length>0&&x.id.length<250&&typeof x.title==='string'&&x.title.length>0&&x.title.length<=120&&(!x.date||/^\d{4}-\d{2}-\d{2}$/.test(x.date))&&(!x.endDate||(/^\d{4}-\d{2}-\d{2}$/.test(x.endDate)&&!!x.date&&x.endDate>=x.date))&&String(x.location||'').length<=180&&String(x.notes||'').length<=2000&&String(x.organizerOther||'').length<=200&&Array.isArray(x.organizerIds)&&x.organizerIds.length<=250&&x.organizerIds.every(id=>typeof id==='string'&&id.length<250)))throw Error('Ungültige Ausflugsdaten.');
- if(new Set(v.excursions.map(x=>x.id)).size!==v.excursions.length)throw Error('Doppelte Ausflugs-IDs.');
+ if(v.excursions.length>2000||!v.excursions.every(x=>x&&typeof x==='object'&&!Array.isArray(x)&&typeof x.id==='string'&&x.id.length>0&&x.id.length<250&&typeof x.title==='string'&&x.title.length>0&&x.title.length<=120&&(!x.date||/^\d{4}-\d{2}-\d{2}$/.test(x.date))&&(!x.endDate||(/^\d{4}-\d{2}-\d{2}$/.test(x.endDate)&&!!x.date&&x.endDate>=x.date))&&String(x.location||'').length<=180&&String(x.notes||'').length<=2000&&String(x.organizerOther||'').length<=200&&Array.isArray(x.organizerIds)&&x.organizerIds.length<=250&&x.organizerIds.every(id=>typeof id==='string'&&id.length<250)))throw Error('Ungültige Eventsdaten.');
+ if(new Set(v.excursions.map(x=>x.id)).size!==v.excursions.length)throw Error('Doppelte Events-IDs.');
  if(!v.fines.every(f=>Number.isSafeInteger(f.amountCents)&&f.amountCents>=0&&typeof f.memberId==='string'&&typeof f.reason==='string'))throw Error('Ungültige Strafen.');
  if(!v.payments.every(p=>Number.isSafeInteger(p.amountCents)&&p.amountCents>=0&&typeof p.fineId==='string'))throw Error('Ungültige Zahlungen.');
  if(!v.meetings.every(m=>Object.entries(m.attendance).every(([memberId,a])=>memberId.length<250 && a && typeof a==='object' && ['present','absent'].includes(a.status) && String(a.reason||'').length<=150 && String(a.note||'').length<=300)))throw Error('Ungültige Anwesenheiten.');
@@ -59,6 +59,7 @@ function validateBackup(v){
 }
 
 function loadData(){try{const raw=localStorage.getItem(DATA_KEY);return raw?assertData(JSON.parse(raw)):DEFAULT();}catch(err){alert('Gespeicherte Daten konnten nicht geladen werden. Bitte keine neuen Daten speichern, bevor eine Sicherung geprüft wurde.');return DEFAULT();}}
+let calendarMonth=today().slice(0,7), calendarSelected=today();
 let data=loadData(), page='home', rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
 let snapshotStatus='Noch keine automatische lokale Sicherung', snapshotCount=0, snapshotError=false;
 let snapshotWriteQueue=Promise.resolve();
@@ -132,8 +133,8 @@ function leaders(year){const rows=rankRows(year);return rows.length&&rows[0].cou
 function voteDeadlineHours(){const h=Number(data.rsvpCutoffHours);if(data.rsvpCutoffHours!==undefined&&Number.isInteger(h)&&h>=0&&h<=720)return h;const d=Number(data.rsvpCutoffDays);return (Number.isInteger(d)&&d>=0&&d<=14?d:1)*24;}
 function allTime(id){return n(member(id)?.historicalCount)+stats(id).present;}
 function rankRows(year){return [...data.members].sort((a,b)=>(year?yearCount(b.id,year)-yearCount(a.id,year):allTime(b.id)-allTime(a.id))||a.name.localeCompare(b.name,'de')).map((m,i)=>({...m,place:i+1,count:year?yearCount(m.id,year):allTime(m.id),pct:stats(m.id,year).pct}));}
-function icon(k){const paths={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/>',meetings:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 15l2 2 5-5"/>',members:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',ranking:'<path d="M8 21h8M12 17v4M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4M17 6h4v2a4 4 0 0 1-4 4"/>',fines:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M16 15h2M7 3v2"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.3 2.3-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.3-2.3.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4v-3.2h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.3-2.3.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V4h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.3 2.3-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v3.2h-.2a1.7 1.7 0 0 0-1.6 1z"/>',excursions:'<path d="M3 17h18l-4-9-5 5-3-4-6 8z"/><path d="M4 21h16M7 4v4M5 6h4"',cloud:'<path d="M20 16.6a4 4 0 0 0-2-7.5A6 6 0 0 0 6.4 10 4 4 0 0 0 7 18h11"/><path d="m10 15 2 2 4-4"/>'};return `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[k]||paths.home}</svg>`;}
-const navItems=[['home','Start'],['meetings','Stammtisch'],['excursions','Ausflüge'],['members','Mitglieder'],['ranking','Rangliste'],['fines','Kassa'],['settings','Mehr']];
+function icon(k){const paths={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/>',meetings:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 15l2 2 5-5"/>',members:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',ranking:'<path d="M8 21h8M12 17v4M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4M17 6h4v2a4 4 0 0 1-4 4"/>',fines:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M16 15h2M7 3v2"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.3 2.3-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.3-2.3.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4v-3.2h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.3-2.3.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V4h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.3 2.3-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v3.2h-.2a1.7 1.7 0 0 0-1.6 1z"/>',excursions:'<path d="M3 17h18l-4-9-5 5-3-4-6 8z"/><path d="M4 21h16M7 4v4M5 6h4"',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 15h2M12 15h2M8 19h2"/>',cloud:'<path d="M20 16.6a4 4 0 0 0-2-7.5A6 6 0 0 0 6.4 10 4 4 0 0 0 7 18h11"/><path d="m10 15 2 2 4-4"/>'};return `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[k]||paths.home}</svg>`;}
+const navItems=[['home','Start'],['meetings','Stammtisch'],['excursions','Events'],['calendar','Kalender'],['members','Mitglieder'],['ranking','Rangliste'],['fines','Kassa'],['settings','Mehr']];
 let avatarUrls={},avatarLoadedAt=0;
 function memberAvatar(id,label=''){const url=avatarUrls[id];return url?`<img class="avatar avatar-photo" src="${esc(url)}" alt="" loading="lazy">`:`<div class="avatar">${esc(label)}</div>`;}
 async function loadMemberAvatars(force=false){
@@ -143,7 +144,7 @@ async function loadMemberAvatars(force=false){
  await Promise.all(list.map(async r=>{const signed=await cloudClient.storage.from('fantastix-avatars').createSignedUrl(r.object_name,3600);if(!signed.error&&signed.data?.signedUrl)found[r.member_id]=signed.data.signedUrl;}));
  avatarUrls=found;avatarLoadedAt=Date.now();render();
 }
-function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<div class="top"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><span class="version-tag">Version ${APP_VERSION}</span></div></div><button class="ghost tiny" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button></div>${renderers[page]()}`;}
+function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<div class="top"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><span class="version-tag">Version ${APP_VERSION}</span></div></div><button class="ghost tiny" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button></div>${renderers[page]()}`;}
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
 function homeHTML(){
@@ -163,10 +164,10 @@ function homeHTML(){
   <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
    ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p><button class="button" data-action="meeting-new">+ Stammtisch planen</button>'}
   </section>
-  <div class="toolbar"><button class="button" data-action="meeting-new">+ Stammtisch</button><button class="ghost" data-action="member-new">+ Mitglied</button></div>
+  <div class="toolbar"><button class="ghost" data-page="calendar">📅 Kalender öffnen</button><button class="button" data-action="meeting-new">+ Stammtisch</button><button class="ghost" data-action="member-new">+ Mitglied</button></div>
   <section class="card"><h2>Letzte 2 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
-  <section class="card excursion-preview"><div class="row"><h2>Nächster Ausflug</h2><span class="chip">${nextExcursion()?excursionPeriod(nextExcursion()):'Nicht geplant'}</span></div>
-   ${nextExcursion()?`<strong class="excursion-title">${esc(nextExcursion().title)}</strong><p class="muted">Organisatoren: ${esc(excursionOrganizers(nextExcursion()))}</p><button class="ghost" data-page="excursions">Ausflüge ansehen →</button>`:`<p class="muted">Noch kein Ausflug geplant.</p><button class="ghost" data-action="excursion-new">+ Ausflug planen</button>`}
+  <section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextExcursion()?excursionPeriod(nextExcursion()):'Nicht geplant'}</span></div>
+   ${nextExcursion()?`<strong class="excursion-title">${esc(nextExcursion().title)}</strong><p class="muted">Organisatoren: ${esc(excursionOrganizers(nextExcursion()))}</p><button class="ghost" data-page="excursions">Events ansehen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new">+ Event planen</button>`}
   </section>`;
 }
 function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><button class="ghost" data-action="bulk-2026">Teilnahmen 2026</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card">${members.length?`<div class="list">${members.map(m=>`<div class="item">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<div class="details"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small>2026: ${yearCount(m.id,'2026')} · Ewig: ${allTime(m.id)}</small></div><button class="smallbtn" data-action="member-edit" data-id="${m.id}">Bearbeiten</button></div>`).join('')}</div>`:empty('👥','Noch keine Mitglieder')}</div>`;}
@@ -176,11 +177,12 @@ function meetingsHTML(){
   <div class="notice">Nächster Organisator: <strong>${next?`Nr. ${memberNo(next)} · ${esc(next.name)}`:'–'}</strong></div>
   <div class="card">${meetings.length?`<div class="list">${meetings.map(m=>{const a=data.members.map(person=>effectiveAttendance(m,person.id)).filter(Boolean),organizer=member(m.organizerId);return `<div class="item"><div class="avatar">${esc(String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0'))}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Kein Gasthaus')} · ${organizer?`Organisator: ${esc(organizer.name)}`:'Organisator offen'}<br>${a.filter(x=>x.status==='present').length} da · ${a.filter(x=>x.status==='absent').length} fehlt · ${data.members.filter(p=>p.active!==false&&!effectiveAttendance(m,p.id)).length} offen</small></div><span class="chip ${doneMeeting(m)?'':'gray'}">${doneMeeting(m)?'Vergangen':'Geplant'}</span><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`}).join('')}</div>`:empty('📅','Keine Stammtische')}</div>`;
 }
+function calendarHTML(){return `${pageHead('','Kalender','Alle Stammtische und Events auf einen Blick.')}${window.FantastiXCalendar.render(data,calendarMonth,calendarSelected,true)}`;}
 function excursionsHTML(){
  const list=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
- return `${pageHead('','Ausflüge','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Ausflug planen</button></div>
- <div class="card">${list.length?`<div class="list">${list.map(x=>{const c=excursionVoteCounts(x.id);return `<div class="item"><div class="avatar">✈</div><div class="details"><strong>${esc(x.title)}</strong><small>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</small><small style="display:block;margin-top:3px">Organisatoren: ${esc(excursionOrganizers(x))}</small><small style="display:block;margin-top:3px">${c.yes} Zusagen · ${c.no} Absagen${x.completed?' · Abgeschlossen':''}</small></div><button class="smallbtn" data-action="excursion-edit" data-id="${esc(x.id)}">Öffnen</button></div>`;}).join('')}</div>`:empty('🧭','Noch keine Ausflüge')}</div>
- <p class="hint">Ausflüge beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
+ return `${pageHead('','Events','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Event planen</button></div>
+ <div class="card">${list.length?`<div class="list">${list.map(x=>{const c=excursionVoteCounts(x.id);return `<div class="item"><div class="avatar">✈</div><div class="details"><strong>${esc(x.title)}</strong><small>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</small><small style="display:block;margin-top:3px">Organisatoren: ${esc(excursionOrganizers(x))}</small><small style="display:block;margin-top:3px">${c.yes} Zusagen · ${c.no} Absagen${x.completed?' · Abgeschlossen':''}</small></div><button class="smallbtn" data-action="excursion-edit" data-id="${esc(x.id)}">Öffnen</button></div>`;}).join('')}</div>`:empty('🧭','Noch keine Events')}</div>
+ <p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
 }
 function excursionForm(id){
  const x=(data.excursions||[]).find(v=>v.id===id)||{id:'',title:'',date:'',endDate:'',location:'',notes:'',organizerIds:[],organizerOther:'',completed:false};
@@ -188,7 +190,7 @@ function excursionForm(id){
  const ownMemberId=readerProfiles.find(p=>p.user_id===cloudUser?.id)?.member_id;
  const countLabel=()=>`${already.filter(v=>v.status==='yes').length} da / ${already.filter(v=>v.status==='no').length} nicht da`;
  const voteHTML=id?`<div class="separator"></div><h3>Zusagen · <span id="excursion-vote-count">${countLabel()}</span></h3>
- <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Ausflug. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
+ <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Event. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
  ${!ownMemberId?'<p class="hint">Tipp: Dein eigenes Admin-Konto kannst du unter Mehr → Benutzer verwalten einem Mitglied zuordnen.</p>':''}
  ${!cloudReady?'<p class="notice warning">Zum Abstimmen bitte zuerst die Admin-Cloud verbinden.</p>':''}
  ${excursionVoteWarning?`<p class="notice warning">${esc(excursionVoteWarning)}</p>`:''}
@@ -197,11 +199,11 @@ function excursionForm(id){
   return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
    <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
    <small class="excursion-vote-label">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small></div>
-   <div class="excursion-admin-vote-buttons" role="group" aria-label="Ausflugszusage für ${esc(m.name)}">
+   <div class="excursion-admin-vote-buttons" role="group" aria-label="Eventszusage für ${esc(m.name)}">
     ${[['yes','✓ Da'],['no','× Nicht da'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
  }).join('')}</div>`:'';
- modal(id?'Ausflug bearbeiten':'Ausflug planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
+ modal(id?'Event bearbeiten':'Event planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
  <div class="field"><label>Bezeichnung *</label><input name="title" maxlength="120" value="${esc(x.title)}" placeholder="z. B. Hüttenwochenende" required></div>
  <div class="field"><label>Beginn (optional)</label><input type="date" name="date" value="${esc(x.date||'')}"></div>
  <div class="field"><label>Ende (bei mehreren Tagen)</label><input type="date" name="endDate" value="${esc(x.endDate||'')}"></div>
@@ -209,8 +211,8 @@ function excursionForm(id){
  <div class="field"><label>Beschreibung</label><textarea name="notes" maxlength="2000" placeholder="Optional">${esc(x.notes||'')}</textarea></div>
  <div class="field"><label>Organisatoren (mehrere möglich)</label><div class="organizer-grid">${[...data.members].sort(byMemberNo).map(m=>`<label class="organizer-option"><input type="checkbox" name="organizerIds" value="${esc(m.id)}" ${x.organizerIds?.includes(m.id)?'checked':''}><span>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</span></label>`).join('')||'<p class="muted">Noch keine Mitglieder vorhanden</p>'}</div></div>
  <div class="field"><label>Weitere Organisatoren (optional)</label><input name="organizerOther" maxlength="200" value="${esc(x.organizerOther||'')}" placeholder="Namen, durch Komma getrennt"></div>
- <div class="field"><label class="organizer-option"><input type="checkbox" name="completed" ${x.completed?'checked':''}><span>Ausflug abgeschlossen</span></label></div>
- ${footer('Ausflug speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="excursion-delete" data-id="${esc(x.id)}">Ausflug löschen</button>`:''}</form>${voteHTML}`);
+ <div class="field"><label class="organizer-option"><input type="checkbox" name="completed" ${x.completed?'checked':''}><span>Event abgeschlossen</span></label></div>
+ ${footer('Event speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="excursion-delete" data-id="${esc(x.id)}">Event löschen</button>`:''}</form>${voteHTML}`);
 }
 function mineFirst(m,memberId){return Boolean(memberId&&m.id===memberId);}
 function updateExcursionVoteControls(id){
@@ -229,7 +231,7 @@ function updateExcursionVoteControls(id){
 }
 async function adminExcursionVote(excursionId,memberId,status){
  if(!cloudReady||!cloudClient||!cloudUser)return alert('Bitte zuerst als Administrator mit der Cloud verbinden.');
- if(excursionVoteWarning)return alert('Ausflugsabstimmungen sind nicht verfügbar: '+excursionVoteWarning);
+ if(excursionVoteWarning)return alert('Eventsabstimmungen sind nicht verfügbar: '+excursionVoteWarning);
  if(!['yes','no','clear'].includes(status)||!member(memberId)||!(data.excursions||[]).some(x=>x.id===excursionId))return;
  const dialog=$('#dialog'),buttons=[...(dialog?.querySelectorAll('[data-action="excursion-admin-vote"]')||[])];
  buttons.forEach(b=>b.disabled=true);
@@ -237,17 +239,17 @@ async function adminExcursionVote(excursionId,memberId,status){
   const {error}=await cloudClient.rpc('fantastix_excursion_admin_vote',{p_excursion_id:excursionId,p_member_id:memberId,p_status:status});
   if(error)throw error;
   await reloadExcursionVotes();updateExcursionVoteControls(excursionId);
- }catch(e){alert('Ausflugszusage konnte nicht gespeichert werden: '+(e.message||String(e))+'\nBitte Supabase-SQL-Update 09 prüfen.');}
+ }catch(e){alert('Eventszusage konnte nicht gespeichert werden: '+(e.message||String(e))+'\nBitte Supabase-SQL-Update 09 prüfen.');}
  finally{buttons.forEach(b=>b.disabled=!cloudReady||!!excursionVoteWarning);}
 }
 function saveExcursion(fd){
  const id=String(fd.get('id')||''),title=String(fd.get('title')||'').trim(),date=String(fd.get('date')||''),endDate=String(fd.get('endDate')||''),location=String(fd.get('location')||'').trim(),notes=String(fd.get('notes')||'').trim(),organizerOther=String(fd.get('organizerOther')||'').trim();
- if(!title||title.length>120||location.length>180||notes.length>2000||organizerOther.length>200)return alert('Bitte gültige Ausflugsdaten eintragen.');
+ if(!title||title.length>120||location.length>180||notes.length>2000||organizerOther.length>200)return alert('Bitte gültige Eventsdaten eintragen.');
  if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date))return alert('Ungültiges Startdatum.');
  if(endDate&&(!date||!/^\d{4}-\d{2}-\d{2}$/.test(endDate)||endDate<date))return alert('Enddatum muss am oder nach dem Startdatum liegen.');
  const ids=[...new Set(fd.getAll('organizerIds').map(String))];if(ids.some(n=>!member(n)))return alert('Ein Organisator ist nicht mehr vorhanden.');
  const stored=id?(data.excursions||[]).find(x=>x.id===id):null;
- if(id&&!stored)return alert('Ausflug nicht gefunden.');
+ if(id&&!stored)return alert('Event nicht gefunden.');
  const x={id:id||uid(),title,date,endDate,location,notes,organizerIds:ids,organizerOther,completed:fd.has('completed'),createdAt:stored?.createdAt||new Date().toISOString()};
  if(stored)Object.assign(stored,x);else data.excursions.push(x);
  closeModal();persist();
@@ -285,7 +287,7 @@ function settingsHTML(){
  ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
  <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button></div></section>
- <section class="card"><h2>Nachrichten an Mitglieder</h2><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
+ <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische werden ebenfalls automatisch per Push angekündigt. Es werden keine Fristerinnerungen versendet.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
 }
@@ -436,7 +438,7 @@ async function noticesAdminList(){
 }
 function newNoticeForm(){
  if(!cloudReady)return alert('Bitte zuerst Cloud verbinden.');
- modal('Pop-up-Nachricht',`<form data-form="notice-create"><div class="field"><label>Überschrift</label><input name="title" maxlength="100" required placeholder="z. B. Stammtisch-Info"></div><div class="field"><label>Nachricht an alle Mitglieder</label><textarea name="body" maxlength="2000" required rows="5" placeholder="Deine Nachricht …"></textarea></div><div class="field"><label>Gültig bis (optional)</label><input name="expiresAt" type="datetime-local"></div><p class="hint">Wird freigeschalteten Mitgliedern beim nächsten Öffnen oder Aktualisieren einmal als Pop-up angezeigt.</p>${footer('Nachricht senden')}</form>`);
+ modal('Pop-up-Nachricht',`<form data-form="notice-create"><div class="field"><label>Überschrift</label><input name="title" maxlength="100" required placeholder="z. B. Stammtisch-Info"></div><div class="field"><label>Nachricht an alle Mitglieder</label><textarea name="body" maxlength="2000" required rows="5" placeholder="Deine Nachricht …"></textarea></div><div class="field"><label>Gültig bis (optional)</label><input name="expiresAt" type="datetime-local"></div><p class="hint">Erscheint einmal als Pop-up und wird zusätzlich als Push-Mitteilung an Mitglieder mit aktivierten Mitteilungen verschickt.</p>${footer('Nachricht senden')}</form>`);
 }
 async function saveNotice(fd){
  if(!cloudReady)return alert('Cloud-Verbindung erforderlich.');
@@ -502,7 +504,7 @@ function cloudForm(){
   <div class="separator"></div><h3>Geschützte Leseransicht</h3>
   <p class="hint">Nur registrierte und von dir einem Mitglied zugeordnete Benutzer sehen die freigegebenen Daten.</p>
   <form data-form="public-settings">
-   ${[['members','Mitglieder & Ranglisten'],['meetings','Stammtische & Anwesenheiten'],['excursions','Ausflüge & Zusagen (inkl. Mitgliedernamen)'],['absences','Abwesenheitsgründe & Notizen'],['fines','Strafen & Zahlungen'],['cash','Kontostand & Kassenbuch']].map(([k,label])=>`<div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="${k}" ${opts[k]?'checked':''}>${label}</label></div>`).join('')}
+   ${[['members','Mitglieder & Ranglisten'],['meetings','Stammtische & Anwesenheiten'],['excursions','Events & Zusagen (inkl. Mitgliedernamen)'],['absences','Abwesenheitsgründe & Notizen'],['fines','Strafen & Zahlungen'],['cash','Kontostand & Kassenbuch']].map(([k,label])=>`<div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="${k}" ${opts[k]?'checked':''}>${label}</label></div>`).join('')}
    <div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="auto" ${opts.auto?'checked':''}>Nach Änderungen automatisch neu veröffentlichen</label></div>
    <div class="notice warning">Strafen, Zahlungen und Abwesenheitsgründe enthalten möglicherweise sensible Angaben. Gib sie nur mit entsprechender Berechtigung frei.</div>
    <div class="stack" style="margin-top:13px"><button class="button" type="submit">Auswahl speichern & veröffentlichen</button><button class="ghost" type="button" data-action="cloud-unpublish">Öffentliche Ansicht abschalten</button></div>
@@ -585,7 +587,7 @@ async function syncCloud(silent=false){
   }else if(cloudDirty){queueSync();}
   else{cloudStatus='connected';syncMessage='Synchronisiert';}
   await readPublication();
-  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Ausflugszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
+  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Eventszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
  }catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Synchronisierung: '+syncMessage);}
  render();
 }
@@ -653,11 +655,15 @@ async function unpublishPublic(){
 
 
 /* Interaktionen */
-document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
+document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
+ if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
+ const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
  const action=el.dataset.action,id=el.dataset.id;if(el.dataset.page){page=el.dataset.page;render();window.scrollTo({top:0,behavior:'instant'});return;}
  switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
- case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Ausflug endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
- case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();}break;}
+ case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Event endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
+ case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();
+ if(!navigator.onLine||!cloudUser||!cloudReady)alert('Lokal gelöscht. Im Mitgliederportal verschwindet der Stammtisch, sobald dein Gerät wieder online ist und der neue Cloud-Stand synchronisiert wurde.');
+ }break;}
  case'payment-delete':{const p=data.payments.find(x=>x.id===id);if(p&&confirm('Diese Zahlung stornieren? Der Betrag wird wieder offen.')){const fid=p.fineId;data.payments=data.payments.filter(x=>x.id!==id);closeModal();persist();fineView(fid);}break;}
  case'fine-delete':{const f=data.fines.find(x=>x.id===id);if(f&&!finePaid(f.id)&&confirm('Diese noch unbezahlte Strafe löschen?')){data.fines=data.fines.filter(x=>x.id!==id);closeModal();persist();}break;}
  case'notice-new':newNoticeForm();break;case'notice-manage':await manageNotices();break;case'notice-revoke':await revokeNotice(id);break;case'reader-access':await readerAccess();break;case'vote-settings':voteSettingsForm();break;case'cloud-setup':cloudForm();break;

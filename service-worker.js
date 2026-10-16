@@ -1,5 +1,5 @@
-const CACHE='fantastix-v3.10.0';
-const FILES=['./','./index.html','./app.js','./lesen.html','./lesen.js','./cloud-config.js','./manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
+const CACHE='fantastix-v3.11.0';
+const FILES=['./','./index.html','./app.js','./lesen.html','./lesen.js','./cloud-config.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('fantastix-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
@@ -8,4 +8,28 @@ self.addEventListener('fetch',e=>{
    if(resp.ok){const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}
    return resp;
  }).catch(()=>caches.match(e.request)));
+});
+
+// Echte Web Push Nachricht - auch bei geschlossener FantastiX Web-App.
+self.addEventListener('push',event=>{
+ let payload={};try{payload=event.data?.json()||{};}catch{payload={};}
+ const kind=['meeting_new','announcement'].includes(payload.kind)?payload.kind:'announcement';
+ const title=String(payload.title||'FantastiX').slice(0,100);
+ const body=String(payload.body||'Neue Nachricht').slice(0,220);
+ event.waitUntil(self.registration.showNotification(title,{
+  body, icon:'./icons/icon-192.png',badge:'./icons/icon-192.png',
+  tag:String(payload.tag||('fantastix-'+kind)).slice(0,140),
+  data:{tab:kind==='announcement'?'dashboard':'meetings'},
+  renotify:false
+ }));
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();
+ event.waitUntil((async()=>{
+  const target=new URL('./lesen.html',self.registration.scope).href;
+  const windows=await clients.matchAll({type:'window',includeUncontrolled:true});
+  const existing=windows.find(c=>{try{return new URL(c.url).pathname===new URL(target).pathname;}catch{return false;}});
+  if(existing){await existing.focus();existing.postMessage({type:'fantastix-push-open',tab:event.notification.data?.tab||'dashboard'});}
+  else if(clients.openWindow)await clients.openWindow(target);
+ })());
 });

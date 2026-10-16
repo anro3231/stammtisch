@@ -1,7 +1,7 @@
 {
   "name": "FantastiX – Stammtisch",
   "short_name": "FantastiX",
-  "description": "FantastiX Stammtischverwaltung",
+  "description": "FantastiX Stammtische, Events und Kalender",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
