@@ -1,1 +1,1 @@
-window.FANTASTIX_VERSION = '3.14.1';
+window.FANTASTIX_VERSION = '3.15.0';
