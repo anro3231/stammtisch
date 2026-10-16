@@ -156,13 +156,32 @@ function dashboard(){
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  `;
 }
+function meetingVoteDeadline(m){
+ const server=deadlines.get(m.id);
+ if(server){const d=new Date(server);if(Number.isFinite(d.getTime()))return d;}
+ // Falls der Server noch keine Frist geliefert hat, die veröffentlichte Einstellung nutzen.
+ if(!m.date)return null;
+ const t=/^\d{2}:\d{2}$/.test(m.time||'')?m.time:'18:30';
+ const h=Number(data?.rsvpCutoffHours ?? (Number(data?.rsvpCutoffDays ?? 1)*24));
+ if(!Number.isFinite(h)||h<0||h>720)return null;
+ const [y,mo,d]=m.date.split('-').map(Number),[hh,mm]=t.split(':').map(Number);
+ // Zeitzonen-Differenz inklusive Sommerzeit über Intl ermitteln.
+ let utc=Date.UTC(y,mo-1,d,hh,mm);
+ for(let i=0;i<3;i++){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc)).filter(x=>x.type!=='literal').map(x=>[x.type,Number(x.value)]));
+  const shown=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute);
+  utc+=Date.UTC(y,mo-1,d,hh,mm)-shown;
+ }
+ return new Date(utc-h*3600000);
+}
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
  const own=effective(m,profile.member_id);
  const locked=false; // Admin-Korrekturen sperren Mitglieder nicht mehr.
- const closed=!m.date||new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())>m.date;
+ const cutoff=meetingVoteDeadline(m);
+ const closed=!cutoff||Date.now()>=cutoff.getTime();
  const status=own?.status||'';
- const summary=closed?'Abstimmung seit dem Folgetag geschlossen':'Änderbar bis 23:59 Uhr am Stammtischtag';
+ const summary=cutoff?(closed?'Abstimmungsfrist abgelaufen':'Änderbar bis '+deadlineLabel(cutoff.toISOString())):'Abstimmungsfrist nicht verfügbar';
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Dabei</button>
  <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht dabei</button></div>
@@ -440,8 +459,8 @@ async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await
 async function castVote(meetingId,status,reason='',note=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
- const todayVienna=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
- if(!m.date||todayVienna>m.date)return alert('Ab dem Tag nach dem Stammtisch darf nur noch der Admin die Anwesenheit ändern.');
+ const cutoff=meetingVoteDeadline(m);
+ if(!cutoff||Date.now()>=cutoff.getTime())return alert('Die Abstimmungsfrist ist abgelaufen. Nur der Admin kann die Anwesenheit noch ändern.');
  if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
  if(note.length>160)return alert('Bitte höchstens 160 Zeichen eingeben.');
  busy=true;renderApp();
