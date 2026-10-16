@@ -1,0 +1,53 @@
+// Pure rendering regressions; no live database, network or storage access.
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ctx=vm.createContext({window:{}});
+vm.runInContext(fs.readFileSync(__dirname+'/lesen.js','utf8').split("document.addEventListener('submit'")[0],ctx);
+const run=s=>vm.runInContext(s,ctx);
+run(`data={sections:{members:true,meetings:true,absences:true},members:[{id:'a',name:'Anna'}]};
+ meetingNotes=[{meeting_id:'m',member_id:'a',note:'Komme <später>'}];
+ testMeeting={id:'m',date:'2026-10-20',attendance:{a:{status:'present',updatedAt:'2026-10-16T20:00:00Z',note:'Alt'}}};`);
+let html=run('rsvpRoster(testMeeting)');
+assert.match(html,/<div class="roster-right">[\s\S]*Abgestimmt:[\s\S]*<small class="meeting-note-visible">📝 Komme &lt;später&gt;<\/small><\/div>/);
+assert.match(html,/<span class="roster-name-text">Anna<\/span>/);
+run('meetingNotes=[]');
+assert.match(run('rsvpRoster(testMeeting)'),/📝 Alt/,'Legacy attendance notes remain visible');
+run('delete testMeeting.attendance.a.updatedAt');
+assert.match(run('rsvpRoster(testMeeting)'),/📝 Alt/,'Notes also render without a vote timestamp');
+run("testMeeting.attendance.a.status='absent';testMeeting.attendance.a.reason='Urlaub'");
+html=run('rsvpRoster(testMeeting)');
+assert.doesNotMatch(html,/meeting-note-visible/);
+assert.match(html,/Grund: Urlaub/);
+run('data.sections.members=false');
+assert.equal(run('rsvpRoster(testMeeting)'), '');
+vm.runInContext(fs.readFileSync(__dirname+'/calendar-view.js','utf8'),ctx);
+const {render,period,move}=ctx.window.FantastiXCalendar;
+html=render({excursions:[{title:'Erster',date:'2026-10-01',endDate:'2026-10-03'},{title:'Zweiter',date:'2026-10-05'}]},'2026-10','2026-10-02',false);
+const overview=html.split('Alle Termine im Monat</h2>')[1];
+assert.match(overview,/Erster/);assert.match(overview,/Zweiter/);
+assert.equal((overview.match(/Erster/g)||[]).length,1);
+assert.equal((html.match(/data-calendar-day=/g)||[]).length,42);
+assert.match(html,/data-calendar-day="2026-10-02"[^>]*aria-pressed="true"/);
+assert.match(render({},'2026-13'),/Kalenderdatum ungültig/);
+assert.equal(period({date:'2026-10-05',endDate:'2026-02-30'}),'05.10.2026');
+assert.equal(period({date:'2026-10-05',endDate:'2026-10-01'}),'05.10.2026');
+assert.equal(move('2026-12',1),'2027-01');
+for(const [month,day] of [['2027-02','2027-02-28'],['2028-02','2028-02-29']]){
+ const result=render({birthdays:[{name:'Schalttag',month:2,day:29}]},month,day,false);
+ assert.match(result.split('Alle Termine im Monat')[0],/🎂 Schalttag/);
+}
+run(`readerUpdates=[{id:1,kind:'announcement',title:'Alt',created_at:'2026-10-15T20:00:00Z'}, {id:2,kind:'announcement',title:'Neu',created_at:'2026-10-16T20:00:00Z'}]`);
+html=run('readerInbox()');
+assert.ok(html.indexOf('<strong>Neu</strong>')<html.indexOf('<strong>Alt</strong>'));
+const admin=fs.readFileSync(__dirname+'/app.js','utf8');
+vm.runInContext('const esc=x=>String(x??\'\'); const fxVisibleLegacyAlerts=()=>fxAlerts; const fxAlertCount=()=>0; let fxAlerts=[],fxNewAlerts=[];'+admin.slice(admin.indexOf('function fxInboxHTML(){'),admin.indexOf('async function fxOpenInbox()')),vm.createContext({}));
+const inboxCtx=vm.createContext({});
+vm.runInContext(`const esc=x=>String(x??'');const fxAlertCount=()=>0;
+ const fxVisibleLegacyAlerts=()=>[{id:1,title:'Mitte',created_at:'2026-10-16T20:30:00Z'}];
+ const fxNewAlerts=[{id:1,kind:'vote',title:'Alt',created_at:'2026-10-16T19:00:00Z'},{id:2,kind:'announcement',title:'Neu',created_at:'2026-10-16T21:00:00Z'}];`
+ +admin.slice(admin.indexOf('function fxInboxHTML(){'),admin.indexOf('async function fxOpenInbox()')),inboxCtx);
+html=vm.runInContext('fxInboxHTML()',inboxCtx);
+assert.ok(html.indexOf('<strong>Neu</strong>')<html.indexOf('<strong>Mitte</strong>'));
+assert.ok(html.indexOf('<strong>Mitte</strong>')<html.indexOf('<strong>Alt</strong>'));
+assert.match(html,/data-action="fx-read" data-id="1"/);
+assert.match(html,/data-action="fx-new-read" data-id="1"/);
+console.log('PASS: reader note placement, escaping, legacy notes, missing timestamps, absences, permissions, calendar boundaries, chronological inboxes and source-specific read actions.');

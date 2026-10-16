@@ -7,11 +7,11 @@
  function local(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
  function shift(date,offset){const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+offset);return local(d);}
  function datesBetween(start,end,low,high){if(!valid(start))return[];const a=start<low?low:start,b=(valid(end)&&end>=start?end:start)>high?high:(valid(end)&&end>=start?end:start);const days=[];for(let x=a;x<=b&&days.length<42;x=shift(x,1))days.push(x);return days;}
- function period(x){if(!valid(x.date))return 'Termin offen';const d=s=>new Date(s+'T12:00:00').toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'numeric'});return x.endDate&&x.endDate!==x.date?d(x.date)+' – '+d(x.endDate):d(x.date);}
+ function period(x){if(!valid(x.date))return 'Termin offen';const d=s=>new Date(s+'T12:00:00').toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'numeric'});return valid(x.endDate)&&x.endDate>x.date?d(x.date)+' – '+d(x.endDate):d(x.date);}
  function render(data,month,selected,admin){
   const {meetings=[],excursions=[],birthdays=[]}=data||{};month=/^\d{4}-\d{2}$/.test(month||'')?month:local(new Date()).slice(0,7);
-  const base=new Date(month+'-01T12:00:00');if(isNaN(base))return '<p>Kalenderdatum ungültig</p>';
-  const first=local(base);const next=new Date(base);next.setMonth(next.getMonth()+1);const last=shift(local(next),-1);
+  const base=new Date(month+'-01T12:00:00');if(!valid(month+'-01'))return '<p>Kalenderdatum ungültig</p>';
+  const first=local(base);
   const prefix=(base.getDay()+6)%7;const gridStart=shift(first,-prefix);const entries={};
   const add=(day,obj)=>{(entries[day]??=[]).push(obj)};
   for(const m of meetings){if(valid(m.date)&&m.date>=gridStart&&m.date<=shift(gridStart,41))add(m.date,{type:'meeting',id:m.id||'',title:'Stammtisch',sub:m.location||'Gasthaus noch offen',date:m.date,raw:m});}
@@ -31,10 +31,10 @@
   }
   selected=valid(selected)?selected:first;
   const monthTitle=base.toLocaleDateString('de-AT',{month:'long',year:'numeric'});
-  const cells=Array.from({length:42},(_,i)=>{const day=shift(gridStart,i);const items=entries[day]||[];return `<button type="button" data-calendar-day="${day}" class="fxcal-day ${day.slice(0,7)!==month?'fxcal-other':''} ${day===local(new Date())?'fxcal-today':''} ${day===selected?'fxcal-selected':''}" aria-label="${day}, ${items.length} Termine"><span class="fxcal-num">${Number(day.slice(-2))}</span><span class="fxcal-dots">${items.slice(0,4).map(e=>`<i class="fxcal-dot ${e.type==='meeting'?'fxcal-meeting':e.type==='birthday'?'fxcal-birthday':'fxcal-event'}"></i>`).join('')}</span></button>`;}).join('');
+  const cells=Array.from({length:42},(_,i)=>{const day=shift(gridStart,i);const items=entries[day]||[];return `<button type="button" data-calendar-day="${day}" class="fxcal-day ${day.slice(0,7)!==month?'fxcal-other':''} ${day===local(new Date())?'fxcal-today':''} ${day===selected?'fxcal-selected':''}" aria-pressed="${day===selected}"${day===local(new Date())?' aria-current="date"':''} aria-label="${day}, ${items.length} Termine"><span class="fxcal-num">${Number(day.slice(-2))}</span><span class="fxcal-dots">${items.slice(0,4).map(e=>`<i class="fxcal-dot ${e.type==='meeting'?'fxcal-meeting':e.type==='birthday'?'fxcal-birthday':'fxcal-event'}"></i>`).join('')}</span></button>`;}).join('');
   const agenda=(entries[selected]||[]);
   const monthEvents=Object.values(entries).flat().filter(e=>e.date.slice(0,7)===month);
-  const overviewUnique=[...new Map(monthEvents.map(e=>[e.type+':'+e.id,e])).values()].sort((a,b)=>a.date.localeCompare(b.date));
+  const overviewUnique=[...new Map(monthEvents.map(e=>[e.raw,e])).values()].sort((a,b)=>a.date.localeCompare(b.date));
   const dayTitle=new Date(selected+'T12:00:00').toLocaleDateString('de-AT',{weekday:'long',day:'numeric',month:'long'});
   const eventItem=e=>{const btn=e.type==='birthday'?'':admin?`<button type="button" class="smallbtn" data-action="${e.type==='meeting'?'meeting-edit':'excursion-edit'}" data-id="${enc(e.id)}">Öffnen</button>`:`<button type="button" class="smallbtn" data-tab="${e.type==='meeting'?'meetings':'excursions'}">Ansehen</button>`;
    return `<div class="fxcal-item"><span class="fxcal-stripe ${e.type==='meeting'?'fxcal-meeting':e.type==='birthday'?'fxcal-birthday':'fxcal-event'}"></span><div class="fxcal-info"><strong>${enc(e.title)}</strong><small>${e.type==='meeting'?'Stammtisch':e.type==='birthday'?'Geburtstag':'Event'} · ${enc(e.type==='event'?period(e.raw):e.type==='birthday'?'jährlich':e.date)}${e.sub?' · '+enc(e.sub):''}</small></div>${btn}</div>`;};
