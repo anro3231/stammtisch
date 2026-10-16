@@ -1,5 +1,5 @@
-FantastiX v3.11.1 – Anzeige der Push-Mitteilungen im Leser-Dashboard ganz unten.
-
-Reines Layout-Update: Kein neues Supabase-SQL erforderlich. Alle Funktionen der Version 3.11.0 bleiben erhalten.
-
-GitHub Pages: Dateien dieser ZIP in das Repository hochladen, die vorhandene cloud-config.js NICHT überschreiben. Danach auf aktualisieren.html den Cache aktualisieren.
+FantastiX v3.12.0 – GitHub Pages + Supabase
+Neue Funktionen: Änderungsverlauf (nur Admin), wöchentliche Cloud-Backups mit sicherer Wiederherstellung und jährlich wiederkehrende Geburtstage (Tag/Monat).
+ZUERST SQL 13 und SQL 14 gemäß ANLEITUNG_3_12.txt ausführen, DANN App-Dateien auf GitHub Pages hochladen.
+cloud-config.js mit bestehenden Supabase-Schlüsseln behalten!
+Wöchentlicher Cron läuft nur nach erfolgreicher Installation des pg_cron-Jobs. Testplan beachten.

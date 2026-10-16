@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.11.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.12.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -12,7 +12,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -102,7 +102,7 @@ function renderGate(msg=''){
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
- const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Events','✈',section('excursions')],['calendar','Kalender','▦',section('meetings')||section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')]].filter(t=>t[3]);
+ const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Events','✈',section('excursions')],['calendar','Kalender','▦',section('meetings')||section('excursions')||section('members')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')]].filter(t=>t[3]);
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
  $('#content').innerHTML=({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
@@ -153,7 +153,7 @@ function meetings(){
  </section>`).join(''):empty('Noch keine Stammtische.')}`;
 }
 
-function calendarPage(){const shown={meetings:section('meetings')?data.meetings:[],excursions:section('excursions')?data.excursions:[]};return `${heading('Kalender')}${window.FantastiXCalendar.render(shown,calendarMonth,calendarSelected,false)}`;}
+function calendarPage(){const shown={meetings:section('meetings')?data.meetings:[],excursions:section('excursions')?data.excursions:[],birthdays:section('members')?birthdays.map(b=>({...b,name:memberName(b.member_id)})):[]};return `${heading('Kalender')}${window.FantastiXCalendar.render(shown,calendarMonth,calendarSelected,false)}`;}
 function excursions(){
  const sorted=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
  return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
@@ -168,9 +168,32 @@ function ranking(){
  const years=[...new Set(['2026',currentYear(),...data.meetings.map(m=>m.date.slice(0,4))])].sort().reverse();
  return `${heading('Ranglisten')}<div class="card"><div class="pill-group"><button class="pill ${year==='all'?'selected':''}" data-year="all">Ewig</button>${years.map(y=>`<button class="pill ${year===y?'selected':''}" data-year="${y}">${y}</button>`).join('')}</div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td>${esc(m.name)}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
 }
+
+function myBirthday(){return birthdays.find(b=>b.member_id===profile?.member_id);}
+function birthdayText(b){return b?`${String(b.day).padStart(2,'0')}.${String(b.month).padStart(2,'0')}.`:'Nicht eingetragen';}
+async function loadBirthdays(){
+ if(!cloud||!user||!profile?.member_id)return;
+ const {data:rows,error}=await cloud.from('fantastix_birthdays').select('member_id,month,day');
+ if(error)throw error;
+ birthdays=rows||[];
+}
+async function saveMyBirthday(form){
+ if(!cloud||!profile?.member_id)return;
+ const fd=new FormData(form),day=Number(fd.get('day')),month=Number(fd.get('month'));
+ if(!Number.isInteger(day)||!Number.isInteger(month)||day<1||day>31||month<1||month>12)return alert('Bitte einen gültigen Tag und Monat wählen.');
+ try{
+  const {error}=await cloud.rpc('fantastix_set_my_birthday',{p_month:month,p_day:day});if(error)throw error;
+  await loadBirthdays();renderApp();alert('Geburtstag gespeichert – jährlich im Kalender sichtbar.');
+ }catch(e){alert('Geburtstag konnte nicht gespeichert werden: '+e.message);}
+}
+async function deleteMyBirthday(){
+ if(!confirm('Geburtstag aus FantastiX entfernen?'))return;
+ try{const {error}=await cloud.rpc('fantastix_set_my_birthday',{p_month:null,p_day:null});if(error)throw error;
+ await loadBirthdays();renderApp();}catch(e){alert('Entfernen fehlgeschlagen: '+e.message);}
+}
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
- return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>2026: ${count(m,'2026')} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
+ return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>2026: ${count(m,'2026')} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
 }
 function cash(){
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
@@ -290,6 +313,7 @@ async function refresh(){
     else{excursionVotes=res.data||[];excursionVoteError='';}
   }else{excursionVotes=[];excursionVoteError='';}
 
+  try{await loadBirthdays();}catch(e){console.warn('Geburtstage nicht verfügbar:',e);birthdays=[];}
   try{await loadAvatars();}catch(e){console.warn('Profilfotos nicht verfügbar:',e);}
   try{const res=await cloud.rpc('fantastix_notice_list');if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}
   renderApp();detectPushSubscription();
@@ -340,7 +364,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -385,6 +409,7 @@ function askAbsenceReason(meetingId){
 document.addEventListener('submit',e=>{
  if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
+ if(e.target.id==='birthday-form'){e.preventDefault();saveMyBirthday(e.target);}
  if(e.target.id==='absence-reason-form'){
    e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
    if(!reason)return alert('Bitte einen Abwesenheitsgrund eintragen.');
@@ -397,6 +422,7 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#push-enable')){enablePush();return;}
  if(e.target.closest('#push-disable')){disablePush();return;}
  if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
+ if(e.target.closest('#birthday-remove')){deleteMyBirthday();return;}
  if(e.target.closest('#notice-ack')){acknowledgeNotice();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
  const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}

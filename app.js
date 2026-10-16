@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.11.1';
+const APP_VERSION = '3.12.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -59,7 +59,7 @@ function validateBackup(v){
 }
 
 function loadData(){try{const raw=localStorage.getItem(DATA_KEY);return raw?assertData(JSON.parse(raw)):DEFAULT();}catch(err){alert('Gespeicherte Daten konnten nicht geladen werden. Bitte keine neuen Daten speichern, bevor eine Sicherung geprüft wurde.');return DEFAULT();}}
-let calendarMonth=today().slice(0,7), calendarSelected=today();
+let calendarMonth=today().slice(0,7), calendarSelected=today(), birthdays=[];
 let data=loadData(), page='home', rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
 let snapshotStatus='Noch keine automatische lokale Sicherung', snapshotCount=0, snapshotError=false;
 let snapshotWriteQueue=Promise.resolve();
@@ -177,7 +177,7 @@ function meetingsHTML(){
   <div class="notice">Nächster Organisator: <strong>${next?`Nr. ${memberNo(next)} · ${esc(next.name)}`:'–'}</strong></div>
   <div class="card">${meetings.length?`<div class="list">${meetings.map(m=>{const a=data.members.map(person=>effectiveAttendance(m,person.id)).filter(Boolean),organizer=member(m.organizerId);return `<div class="item"><div class="avatar">${esc(String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0'))}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Kein Gasthaus')} · ${organizer?`Organisator: ${esc(organizer.name)}`:'Organisator offen'}<br>${a.filter(x=>x.status==='present').length} da · ${a.filter(x=>x.status==='absent').length} fehlt · ${data.members.filter(p=>p.active!==false&&!effectiveAttendance(m,p.id)).length} offen</small></div><span class="chip ${doneMeeting(m)?'':'gray'}">${doneMeeting(m)?'Vergangen':'Geplant'}</span><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`}).join('')}</div>`:empty('📅','Keine Stammtische')}</div>`;
 }
-function calendarHTML(){return `${pageHead('','Kalender','Alle Stammtische und Events auf einen Blick.')}${window.FantastiXCalendar.render(data,calendarMonth,calendarSelected,true)}`;}
+function calendarHTML(){return `${pageHead('','Kalender','Stammtische, Events und Geburtstage.')}${window.FantastiXCalendar.render({...data,birthdays:birthdays.map(b=>({...b,name:member(b.member_id)?.name||'Mitglied'}))},calendarMonth,calendarSelected,true)}`;}
 function excursionsHTML(){
  const list=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
  return `${pageHead('','Events','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Event planen</button></div>
@@ -288,8 +288,84 @@ function settingsHTML(){
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
  <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button></div></section>
  <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische werden ebenfalls automatisch per Push angekündigt. Es werden keine Fristerinnerungen versendet.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
+ <section class="card"><h2>Cloud-Sicherheit · Version 3.12</h2><p class="hint">Serverseitiger Änderungsverlauf und wöchentliche Cloud-Sicherungen. Nur als Administrator abrufbar.</p><div class="stack"><button class="button" data-action="audit-list">Änderungsverlauf ansehen</button><button class="ghost" data-action="backup-list">Cloud-Backups & Wiederherstellung</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
+}
+
+/* v3.12 – Sicherungen und Änderungsverlauf: serverseitige RLS/RPC-Rechte. */
+const cloudSecurityReady=()=>!!(cloudClient&&cloudUser&&cloudReady&&navigator.onLine);
+const fmtStamp=val=>new Date(val).toLocaleString('de-AT');
+const auditAreaLabels={members:'Mitglied',meetings:'Stammtisch',attendance:'Teilnahme / Stimme',excursions:'Event',fines:'Strafe',payments:'Zahlung',cashbook_transaction:'Kassenbuchung',settings:'Einstellungen',birthday:'Geburtstag',event_vote:'Event-Zusage',user_link:'Benutzerzuordnung',announcement:'Nachricht',publication:'Leserfreigabe',backup:'Wiederherstellung'};
+const auditActionLabels={created:'Angelegt',updated:'Geändert',deleted:'Gelöscht',restored:'Wiederhergestellt',published:'Veröffentlicht'};
+async function openAudit(){
+ if(!cloudSecurityReady())return alert('Bitte mit Supabase als Admin verbinden.');
+ try{
+  const {data:rows,error}=await cloudClient.from('fantastix_audit_log').select('id,at,actor,area,record_id,action,previous_value,current_value').order('id',{ascending:false}).limit(100);
+  if(error)throw error;
+  auditEntries=rows||[];
+  const actors=Object.fromEntries(readerProfiles.map(p=>[p.user_id,p.username||p.email||'Admin']));
+  modal('Änderungsverlauf',`<p class="hint">Die letzten 100 serverseitig erfassten Änderungen. Erfassung beginnt mit Installation von Version 3.12.</p>
+  ${auditEntries.length?auditEntries.map(e=>`<div class="item"><div class="details"><strong>${esc(auditAreaLabels[e.area]||e.area)} · ${esc(auditActionLabels[e.action]||e.action)}</strong><small>${esc(fmtStamp(e.at))} · ${esc(actors[e.actor]||(e.actor?'Mitglied':'System'))}</small><small>${esc(e.record_id||'')}</small></div><button class="smallbtn" data-action="audit-detail" data-id="${e.id}">Details</button></div>`).join(''):'<p class="muted">Noch keine protokollierten Änderungen.</p>'}
+  <div class="foot"><button class="ghost" data-action="close">Schließen</button></div>`);
+ }catch(e){alert('Änderungsverlauf nicht verfügbar: '+e.message+' · SQL 13 prüfen.');}
+}
+let auditEntries=[];
+function auditDetail(id){const x=auditEntries.find(e=>String(e.id)===String(id));if(!x)return;
+ const actors=Object.fromEntries(readerProfiles.map(p=>[p.user_id,p.username||p.email||'Admin']));
+ const format=obj=>obj===null?'–':JSON.stringify(obj,null,2);
+ modal('Änderung im Detail',`<p class="hint">${esc(fmtStamp(x.at))} · ${esc(actors[x.actor]||(x.actor?'Mitglied':'System'))}<br>${esc(auditAreaLabels[x.area]||x.area)}: ${esc(x.record_id||'')}</p><h3>Vorher</h3><pre class="audit-json">${esc(format(x.previous_value))}</pre><h3>Nachher</h3><pre class="audit-json">${esc(format(x.current_value))}</pre><div class="foot"><button class="ghost" data-action="audit-list">Zurück zur Übersicht</button></div>`);
+}
+let backupEntries=[];
+async function openBackups(){
+ if(!cloudSecurityReady())return alert('Bitte als Administrator online mit Supabase verbinden.');
+ try{
+  const {data:rows,error}=await cloudClient.rpc('fantastix_backup_list');if(error)throw error;
+  backupEntries=rows||[];
+  modal('Cloud-Backups',`<div class="notice">Wöchentliche serverseitige Sicherung (Montag 03:00 UTC), 16 Wochen werden aufbewahrt. Vor jeder Rücksicherung bleibt zusätzlich der aktuelle Datenstand erhalten.</div><p class="hint">Die Sicherung umfasst Verwaltung, Event-Zusagen und Geburtstage. Konten, Login-Passwörter, Push-Abos und Profilbilder werden bei der Wiederherstellung nicht überschrieben. Leserfreigabe bleibt danach AUS.</p><div class="stack"><button class="button" data-action="backup-create">Jetzt Cloud-Sicherung erstellen</button></div>
+  ${backupEntries.length?backupEntries.map(b=>`<div class="item"><div class="details"><strong>${esc(fmtStamp(b.created_at))}</strong><small>${esc({weekly:'Automatisch · Woche',manual:'Manuell',pre_restore:'Vor Wiederherstellung'}[b.kind]||b.kind)} · Revision ${esc(b.revision)} · ${Math.ceil(b.bytes/1024)} KB</small></div><div class="right"><button class="smallbtn" data-action="backup-export" data-id="${b.id}">JSON</button><button class="smallbtn" data-action="backup-restore" data-id="${b.id}">Wiederherstellen</button></div></div>`).join(''):'<p class="hint">Noch keine Cloud-Sicherung. Erstelle zuerst eine manuelle Sicherung oder aktiviere den Wochenjob (SQL 14).</p>'}
+  <div class="foot"><button class="ghost" data-action="close">Schließen</button></div>`);
+ }catch(e){alert('Cloud-Sicherungen nicht verfügbar: '+e.message+' · SQL 13 prüfen.');}
+}
+async function createCloudBackup(){
+ if(!cloudSecurityReady())return alert('Cloud nicht verbunden.');
+ try{if(cloudDirty)throw Error('Zuerst lokale Änderungen synchronisieren.');
+  const {error}=await cloudClient.rpc('fantastix_backup_create');if(error)throw error;
+  await openBackups();alert('Cloud-Sicherung erstellt.');
+ }catch(e){alert('Sicherung fehlgeschlagen: '+e.message);}
+}
+async function exportCloudBackup(id){
+ if(!cloudSecurityReady())return;
+ try{const {data:payload,error}=await cloudClient.rpc('fantastix_backup_export',{p_id:Number(id)});if(error)throw error;
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='FantastiX_Cloud_Backup_'+id+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+ }catch(e){alert('Sicherung konnte nicht exportiert werden: '+e.message);}
+}
+async function restoreCloudBackup(id){
+ if(!cloudSecurityReady())return alert('Cloud nicht verbunden.');
+ if(cloudDirty)return alert('Es liegen ungespeicherte lokale Änderungen vor. Zuerst synchronisieren oder JSON exportieren.');
+ const item=backupEntries.find(b=>String(b.id)===String(id));if(!item)return alert('Bitte Sicherungsliste neu laden.');
+ let preview;
+ try{
+  const {data:payload,error}=await cloudClient.rpc('fantastix_backup_export',{p_id:Number(id)});
+  if(error)throw error;
+  preview=validateBackup(payload.private);
+ }catch(e){return alert('Sicherung konnte nicht geprüft werden: '+e.message);}
+ if(!confirm('Sicherung vom '+fmtStamp(item.created_at)+'\n'+preview.members.length+' Mitglieder · '+preview.meetings.length+' Stammtische · '+preview.excursions.length+' Events · '+preview.fines.length+' Strafen\n\nAlle zentralen Daten auf diesen Stand zurücksetzen? Eine Vorher-Sicherung wird erstellt. Leserfreigabe wird deaktiviert.'))return;
+ const confirmation=prompt('Zum Bestätigen genau WIEDERHERSTELLEN eintippen:');if(confirmation!=='WIEDERHERSTELLEN')return;
+ try{
+  const remote=await readRemote();if(Number(remote.revision)!==Number(cloudRevision))throw Error('Inzwischen andere Cloud-Revision. Bitte zuerst synchronisieren.');
+  const {error}=await cloudClient.rpc('fantastix_backup_restore',{p_backup_id:Number(id),p_expected_revision:Number(remote.revision),p_confirmation:confirmation});if(error)throw error;
+  const restored=await readRemote();adoptCloud(restored);publicPublished=false;
+  const opts=publicSettings();opts.auto=false;savePublicSettings(opts);
+  await readPublication();await reloadExcursionVotes();await loadBirthdaysAdmin();
+  closeModal();render();alert('Sicherung wiederhergestellt. Eine zusätzliche Vorher-Sicherung wurde angelegt. Leserfreigabe ist AUS: Daten zuerst prüfen und anschließend manuell veröffentlichen.');
+ }catch(e){alert('Wiederherstellen fehlgeschlagen: '+e.message);}
+}
+async function loadBirthdaysAdmin(){
+ if(!cloudClient||!cloudUser||!cloudReady)return;
+ const {data:rows,error}=await cloudClient.from('fantastix_birthdays').select('member_id,month,day');if(error)throw error;
+ birthdays=rows||[];if(page==='calendar')render();
 }
 function modal(title,html){$('#dialog').innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${title}</h2><button type="button" class="close" data-action="close" aria-label="Schließen">×</button></div>${html}</div>`;$('#dialog').showModal();}
 const footer = (label='Speichern')=>`<div class="foot"><button type="button" class="ghost" data-action="close">Abbrechen</button><button class="button" type="submit">${label}</button></div>`;
@@ -587,7 +663,7 @@ async function syncCloud(silent=false){
   }else if(cloudDirty){queueSync();}
   else{cloudStatus='connected';syncMessage='Synchronisiert';}
   await readPublication();
-  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Eventszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
+  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Benutzer konnten nicht geladen werden:',e);}try{await loadMemberAvatars();}catch(e){console.warn('Fotos derzeit nicht verfügbar:',e);}try{await loadBirthdaysAdmin();}catch(e){console.warn('Geburtstage derzeit nicht verfügbar:',e);}try{await reloadExcursionVotes();}catch(e){excursionVoteWarning='Eventszusagen derzeit nicht abrufbar: '+(e.message||String(e));console.warn(excursionVoteWarning);}}
  }catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Synchronisierung: '+syncMessage);}
  render();
 }
@@ -666,7 +742,7 @@ document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest
  }break;}
  case'payment-delete':{const p=data.payments.find(x=>x.id===id);if(p&&confirm('Diese Zahlung stornieren? Der Betrag wird wieder offen.')){const fid=p.fineId;data.payments=data.payments.filter(x=>x.id!==id);closeModal();persist();fineView(fid);}break;}
  case'fine-delete':{const f=data.fines.find(x=>x.id===id);if(f&&!finePaid(f.id)&&confirm('Diese noch unbezahlte Strafe löschen?')){data.fines=data.fines.filter(x=>x.id!==id);closeModal();persist();}break;}
- case'notice-new':newNoticeForm();break;case'notice-manage':await manageNotices();break;case'notice-revoke':await revokeNotice(id);break;case'reader-access':await readerAccess();break;case'vote-settings':voteSettingsForm();break;case'cloud-setup':cloudForm();break;
+ case'audit-list':await openAudit();break;case'audit-detail':auditDetail(id);break;case'backup-list':await openBackups();break;case'backup-create':await createCloudBackup();break;case'backup-export':await exportCloudBackup(id);break;case'backup-restore':await restoreCloudBackup(id);break;case'notice-new':newNoticeForm();break;case'notice-manage':await manageNotices();break;case'notice-revoke':await revokeNotice(id);break;case'reader-access':await readerAccess();break;case'vote-settings':voteSettingsForm();break;case'cloud-setup':cloudForm();break;
  case'cloud-check':closeModal();await syncCloud();break;
  case'cloud-choose':closeModal();await syncCloud();break;
  case'cloud-download':if(pendingRemote&&confirm('Lokale Daten durch den Cloud-Stand ersetzen? Vorher JSON sichern!')){adoptCloud(pendingRemote);pendingRemote=null;closeModal();}break;
