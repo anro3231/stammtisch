@@ -1,0 +1,80 @@
+FANTASTIX 3.9.0 – UPDATE FÜR BESTEHENDE SUPABASE-CLOUD
+==========================================================
+
+NEU IN 3.9.0
+- Ausflüge: Start- und Enddatum (mehrtägig), Datum optional.
+- Ausflug-Kachel GANZ UNTEN auf Startseite von Admin und Mitgliedern.
+- Monatsbeitrag: Buchungstag 1–31 konfigurierbar; in kurzen Monaten
+  der letzte Kalendertag. Bereits gebuchte Monate werden nicht wiederholt.
+- Abstimmungsgrenze in Stunden vor Beginn (0–720) einstellbar.
+- Nächster Stammtisch: kleine Anzeige der aktuellen Da-Zusagen.
+- Mitglieder: eigenes Profilfoto (privater Supabase Storage Bucket).
+- Admin: kurze Nachrichten an alle freigeschalteten Mitglieder senden.
+  Für Leser: KEIN eigener Menüpunkt Nachrichten. Nachrichten erscheinen
+  einmalig als Pop-up und nach "OK, verstanden" nie wieder für diesen
+  Benutzer – auch nicht auf einem zweiten Gerät (serverseitige Quittung).
+- Leser-Navigation ohne "Profil". Foto und Konto-Einstellungen stehen
+  im Menü "Mitglieder".
+
+WICHTIGE SCHRITTE – BITTE IN DIESER REIHENFOLGE
+1. Vorher als Admin unter Mehr eine komplette JSON-Sicherung exportieren.
+   Sicherung möglichst außerhalb des Browsers, z. B. iCloud Drive, ablegen.
+2. Im bestehenden Supabase-Projekt SQL Editor öffnen und das einmalige
+   Update 08_NACHRICHTEN_FRISTEN_FOTOS_AUSFLUEGE.sql ausführen.
+   NICHT die alte 01_SUPABASE_SCHEMA.sql erneut ausführen.
+3. Nach erfolgreichem SQL im GitHub-Repository `anro3231/andi` die Dateien
+   aus FantastiX_v3_9_GitHub_Pages.zip hochladen und vorhandene ersetzen.
+   Die bisherige cloud-config.js unbedingt behalten; sie ist im ZIP
+   absichtlich NICHT enthalten. Die SQL-Datei nicht öffentlich hochladen.
+4. Unter GitHub → Actions kontrollieren, ob Pages erfolgreich veröffentlicht.
+5. Die FantastiX-Adresse öffnen: https://anro3231.github.io/andi/
+   Falls noch v3.8 erscheint:
+   https://anro3231.github.io/andi/aktualisieren.html
+   Die Browser-/Website-Daten selbst NICHT löschen.
+6. Die Versionsanzeige muss 3.9.0 zeigen. Test mit Admin und einem
+   freigeschalteten Mitglied durchführen.
+
+NEUE EINSTELLUNGEN
+- Monatsbeitrag: Kassa → Monatsbeiträge → Ändern → Buchungstag.
+- Abstimmungsfrist: Mehr → Abstimmung & Benutzerzugänge → Abstimmungsfrist.
+- Pop-up-Nachricht: Mehr → Nachrichten an Mitglieder → Nachricht senden.
+- Foto: Leserportal → Mitglieder → Mein Profilfoto → Foto wählen.
+- Mehrausflüge: Ausflüge → Ausflug planen / bearbeiten → Beginn/Ende.
+
+HINWEISE ZU NACHRICHTEN
+- An alle aktuell freigeschalteten Benutzer; nicht freigeschaltete Konten
+  erhalten keine Nachrichten, bis sie einem Mitglied zugeordnet sind.
+- Keine System-Push-Benachrichtigung: Das Pop-up erscheint beim Öffnen der
+  Leser-App oder bei der nächsten Aktualisierung (Prüfung ca. 1x/Minute).
+- "OK, verstanden" speichert die Quittung zentral in Supabase.
+  Ohne erfolgreiche Bestätigung wird die Nachricht erneut angeboten.
+- Mehrere ungelesene Nachrichten erscheinen nacheinander; jede einmalig.
+- Der Admin kann Nachrichten zurückziehen, auch wenn sie noch nicht
+  von allen Mitgliedern bestätigt wurden.
+
+SICHERHEIT
+- Der Avatar-Bucket ist privat; die Webseite erhält nur temporär
+  signierte Bild-URLs für freigeschaltete Benutzer.
+- Nur Administratoren dürfen Nachrichten versenden oder zurückziehen.
+- Die Quittierung für eine Nachricht gilt nur für auth.uid() und wird
+  von Supabase serverseitig durchgesetzt.
+- Zugangsdaten: In cloud-config.js darf ausschließlich ein öffentlicher
+  Supabase Publishable/anon Key stehen – NIEMALS service_role/secret.
+- GitHub Pages ist öffentlich, deine privaten Daten werden in Supabase
+  mit serverseitigen Zugriffsrechten geschützt.
+
+WICHTIGE TESTS NACH DEM SQL-UPDATE
+A) Admin sendet Testnachricht. Verknüpfter Leser öffnet lesen.html.
+   Ein Pop-up erscheint, nach OK bleibt es dauerhaft verschwunden.
+   Dasselbe Konto auf einem zweiten Gerät sollte kein zweites Pop-up sehen.
+B) Nicht zugeordnetes Benutzerkonto darf weder Fotoverzeichnis noch
+   Mitglieder- oder Nachrichtendaten abrufen.
+C) Normaler Leser darf keine neue Nachricht über RPC erstellen.
+D) Mitglied lädt ein eigenes Bild hoch. Ein anderes verknüpftes Mitglied
+   kann es sehen, aber nicht verändern.
+E) Mehrtägigen Ausflug ohne Ranglistenpunkte speichern; 31. als
+   Buchungstag für Februar prüfen; Stundenfrist (z. B. 18 h) testen.
+
+Diese Tests wurden lokal mit simuliertem Browser-/Cloud-Verhalten vorbereitet.
+Die tatsächlichen Supabase-Richtlinien und iPhone-Gerätetests müssen in
+DEINEM Projekt durchgeführt werden.

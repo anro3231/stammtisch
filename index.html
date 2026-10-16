@@ -53,6 +53,8 @@ html, body { touch-action: pan-x pan-y; }
 .organizer-option{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:11px;background:#faf6f7;border:1px solid #eee2e4;margin:0;min-width:0;font-size:13px;font-weight:600}
 .organizer-option input{flex:0 0 auto;width:18px;height:18px;min-height:0}.organizer-option span{overflow-wrap:anywhere}
 @media(max-width:440px){.organizer-grid{grid-template-columns:1fr}.navinner .navbutton{font-size:9px;padding-left:0;padding-right:0}.navinner .navbutton svg{width:19px;height:19px}.readonly-nav .navbutton{font-size:9px!important;min-width:0}}
+
+.avatar-photo{object-fit:cover;border:1px solid #eee;}
 </style><script id="fantastix-zoom-lock">
 // Verhindert versehentliches Vergrößern in der mobilen App; normales Scrollen bleibt möglich.
 for (const eventName of ['gesturestart', 'gesturechange']) {
@@ -61,4 +63,4 @@ for (const eventName of ['gesturestart', 'gesturechange']) {
 document.addEventListener('touchmove', event => {
   if (event.touches.length > 1) event.preventDefault();
 }, {passive:false});
-</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.8.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.8.0"></script></body></html>
+</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.9.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.9.0"></script></body></html>

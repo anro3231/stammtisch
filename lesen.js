@@ -1,4 +1,4 @@
-/* FantastiX 3.8.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.9.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -11,7 +11,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -31,22 +31,49 @@ function rsvpCounts(m){
  const values=memberOrder().filter(p=>p.active!==false).map(p=>effective(m,p.id));
  return {yes:values.filter(v=>v?.status==='present').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length};
 }
+function avatarFor(id){const url=avatarUrls[id];return url?`<img class="member-photo" src="${esc(url)}" alt="" loading="lazy">`:`<span class="member-photo member-photo-placeholder">${esc((memberName(id)||'?').trim().slice(0,1).toUpperCase())}</span>`;}
+async function loadAvatars(force=false){
+ if(!cloud||!user||!profile?.member_id||(!force&&Date.now()-avatarLoadedAt<5*60*1000))return;
+ const {data:rows,error}=await cloud.rpc('fantastix_avatar_directory');if(error)throw error;
+ const result={};
+ await Promise.all((rows||[]).map(async row=>{const signed=await cloud.storage.from('fantastix-avatars').createSignedUrl(row.object_name,3600);if(!signed.error&&signed.data?.signedUrl)result[row.member_id]=signed.data.signedUrl;}));
+ avatarUrls=result;avatarLoadedAt=Date.now();
+}
+function fileToJpeg(file){return new Promise((resolve,reject)=>{
+ if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)return reject(Error('Bitte ein Bild mit maximal 12 MB auswählen.'));
+ const url=URL.createObjectURL(file),img=new Image();
+ img.onload=()=>{try{const size=360,canvas=document.createElement('canvas');canvas.width=canvas.height=size;const context=canvas.getContext('2d');const side=Math.min(img.width,img.height),sx=(img.width-side)/2,sy=(img.height-side)/2;context.drawImage(img,sx,sy,side,side,0,0,size,size);canvas.toBlob(blob=>{URL.revokeObjectURL(url);if(!blob)return reject(Error('Bild konnte nicht verarbeitet werden.'));resolve(blob);},'image/jpeg',0.80);}catch(e){URL.revokeObjectURL(url);reject(e);}};
+ img.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Bild konnte nicht gelesen werden.'));};img.src=url;
+});}
+async function uploadMyPhoto(file){
+ if(!cloud||!user||!profile?.member_id)return alert('Bitte zuerst anmelden und freischalten lassen.');
+ try{const blob=await fileToJpeg(file),name=user.id+'/avatar.jpg';
+ const {error}=await cloud.storage.from('fantastix-avatars').upload(name,blob,{contentType:'image/jpeg',upsert:true,cacheControl:'60'});if(error)throw error;
+ await loadAvatars(true);renderApp();alert('Profilfoto gespeichert.');
+ }catch(e){alert('Foto konnte nicht gespeichert werden: '+(e.message||String(e)));}
+}
+async function deleteMyPhoto(){
+ if(!confirm('Dein Profilfoto entfernen?'))return;
+ try{const {error}=await cloud.storage.from('fantastix-avatars').remove([user.id+'/avatar.jpg']);if(error)throw error;await loadAvatars(true);renderApp();}catch(e){alert('Foto konnte nicht entfernt werden: '+(e.message||String(e)));}
+}
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
  return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id);
- return `<div class="roster-row"><div class="roster-name">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</div>
+ return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
  <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Da':'× Nicht da'}</span></div></div>`;
  }).join('')}</div></div>`;
 }
 
 function tripOrganizers(x){const names=(x.organizerIds||[]).map(memberName).filter(Boolean);if(String(x.organizerOther||'').trim())names.push(x.organizerOther.trim());return names.length?names.join(', '):'Noch offen';}
-function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||x.date>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
+function tripDateLabel(x){return !x.date?'Termin offen':x.endDate&&x.endDate!==x.date?`${dateLabel(x.date)} – ${dateLabel(x.endDate)}`:dateLabel(x.date);}
+function tripLastDate(x){return x.endDate||x.date||'';}
+function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
 function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,no:votes.filter(v=>v.status==='no').length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} da · ${excursionCount(x.id).no} nicht da</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${esc(m.name)}</span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span></div>`}).join('')}</div></div>`;}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} da · ${excursionCount(x.id).no} nicht da</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span></div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -74,10 +101,10 @@ function renderGate(msg=''){
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
- const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Ausflüge','✈',section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')],['profile','Profil','◉',true]].filter(t=>t[3]);
+ const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Ausflüge','✈',section('excursions')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')]].filter(t=>t[3]);
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
- $('#content').innerHTML=({dashboard,meetings,excursions,ranking,members,cash,profilePage}[tab])();
+ $('#content').innerHTML=({dashboard,meetings,excursions,ranking,members,cash}[tab])();
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
@@ -92,10 +119,10 @@ function dashboard(){
   <div class="metric"><small>Ewige Führung</small>${leaderHTML(all)}</div>
   <div class="metric"><small>Kontostand</small><div class="value balance-tile">${section('cash')?money(data.cashbook?.balanceCents):'–'}</div><small>Offene Strafen: ${pending!==null?money(Math.max(0,pending)):'–'}</small></div>
  </div>
- ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Ausflug</h2><span class="chip">${nextTrip()?.date?dateLabel(nextTrip().date):nextTrip()?'Termin offen':'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Ausflüge ansehen →</button>`:'<p class="muted">Noch kein Ausflug geplant.</p>'}</section>`:''}
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${votePanel(next,true)}${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-tab="meetings">Alle ansehen →</button></div>`:''}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
- <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
+ <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
+ ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Ausflug</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Ausflüge ansehen →</button>`:'<p class="muted">Noch kein Ausflug geplant.</p>'}</section>`:''}`;
 }
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
@@ -127,7 +154,7 @@ function meetings(){
 function excursions(){
  const sorted=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
  return `${heading('Ausflüge')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
- ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&x.date<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':x.date?dateLabel(x.date):'Termin offen'}</span></div>
+ ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':tripDateLabel(x)}</span></div>
  ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
  <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht da</button></div>
@@ -140,14 +167,54 @@ function ranking(){
 }
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
- return `${heading('Mitglieder')}<section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item"><div class="avatar">${esc(m.memberNumber||m.name.slice(0,1).toUpperCase())}</div><div class="details"><strong>${esc(m.name)}</strong><small>2026: ${count(m,'2026')} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
+ return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>2026: ${count(m,'2026')} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
 }
 function cash(){
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
  return `${heading('Kassa')}${section('cash')?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>`:''}
  ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div><section class="card"><h2>Strafen</h2><div class="list">${data.fines.map(f=>{const settled=data.payments.filter(p=>p.fineId===f.id).reduce((s,p)=>s+n(p.amountCents),0);return `<div class="item"><div class="details"><strong>${esc(memberName(f.memberId))}</strong><small>${esc(f.reason||'Strafe')}</small></div><div class="right"><strong>${money(f.amountCents)}</strong><small class="muted">${money(Math.max(0,f.amountCents-settled))} offen</small></div></div>`}).join('')||'<p>Keine Strafen</p>'}</div></section>`:''}`;
 }
-function profilePage(){return `${heading('Mein Profil')}<section class="card"><h2>${esc(member(profile.member_id)?.name||'Mitglied')}</h2><p class="muted">${esc(displayAccount())}</p><p class="hint">Mitgliedsnummer: ${esc(member(profile.member_id)?.memberNumber||'–')}</p><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input type="password" name="newPassword" minlength="8" autocomplete="new-password" required></div><div class="field"><label>Passwort wiederholen</label><input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></div><button type="submit" class="ghost">Passwort ändern</button></form><div class="stack"><button type="button" class="ghost" id="reader-refresh">Aktualisieren</button><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></div></section>`;}
+// Nur einmal pro Benutzer: Der Server liefert ausschliesslich noch nicht bestaetigte Nachrichten.
+// Keine Nachrichtenliste und kein Menuepunkt fuer Leser.
+function showNextNotice(){
+ const dlg=$('#notice-dialog');
+ if(!dlg||dlg.open||noticeAcknowledging||!profile?.member_id||!noticeQueue.length)return;
+ if($('#absence-dialog')?.open)return;
+ const v=noticeQueue.shift();
+ if(!v)return;
+ dlg.dataset.noticeId=String(v.id);
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${esc(v.title)}</h2></div><p class="notice-popup-body">${esc(v.message)}</p><button class="button notice-ack" type="button" id="notice-ack">OK, verstanden</button></div>`;
+ dlg.showModal();
+}
+function queueNewNotices(){
+ const dlg=$('#notice-dialog');const shown=dlg?.open?Number(dlg.dataset.noticeId):null;
+ const existing=new Set(noticeQueue.map(v=>Number(v.id)));
+ for(const msg of notices){
+  const id=Number(msg.id);
+  if(!Number.isSafeInteger(id)||id===shown||existing.has(id))continue;
+  noticeQueue.push(msg);existing.add(id);
+ }
+ const live=new Set(notices.map(v=>Number(v.id)));
+ noticeQueue=noticeQueue.filter(v=>live.has(Number(v.id))).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+ setTimeout(showNextNotice,0);
+}
+async function acknowledgeNotice(){
+ if(noticeAcknowledging||!cloud||!user)return;
+ const dlg=$('#notice-dialog');const id=Number(dlg?.dataset.noticeId);
+ if(!Number.isSafeInteger(id)||id<=0)return;
+ noticeAcknowledging=true;
+ const button=dlg.querySelector('#notice-ack');if(button)button.disabled=true;
+ try{
+  const {error}=await cloud.rpc('fantastix_notice_ack',{p_id:id});if(error)throw error;
+  notices=notices.filter(v=>Number(v.id)!==id);
+  noticeQueue=noticeQueue.filter(v=>Number(v.id)!==id);
+  dlg.close();
+ }catch(e){
+  alert('Bestätigung konnte nicht gespeichert werden. Bitte erneut versuchen: '+(e.message||String(e)));
+  if(button)button.disabled=false;
+ }finally{noticeAcknowledging=false;showNextNotice();}
+}
+function profilePage(){return `${heading('Mein Profil')}<section class="card"><h2>${esc(member(profile.member_id)?.name||'Mitglied')}</h2><div class="my-photo-card">${avatarFor(profile.member_id)}<label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div><p class="muted">${esc(displayAccount())}</p><p class="hint">Mitgliedsnummer: ${esc(member(profile.member_id)?.memberNumber||'–')}</p><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input type="password" name="newPassword" minlength="8" autocomplete="new-password" required></div><div class="field"><label>Passwort wiederholen</label><input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></div><button type="submit" class="ghost">Passwort ändern</button></form><div class="stack"><button type="button" class="ghost" id="reader-refresh">Aktualisieren</button><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></div></section>`;}
 async function initClient(){
  const cfg=window.FANTASTIX_CLOUD;
  if(!cfg||!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(String(cfg.url||''))||!String(cfg.key||'').startsWith('sb_publishable_')&&!String(cfg.key||'').startsWith('eyJ'))throw Error('Cloud noch nicht eingerichtet.');
@@ -177,6 +244,8 @@ async function refresh(){
     else{excursionVotes=res.data||[];excursionVoteError='';}
   }else{excursionVotes=[];excursionVoteError='';}
 
+  try{await loadAvatars();}catch(e){console.warn('Profilfotos nicht verfügbar:',e);}
+  try{const res=await cloud.rpc('fantastix_notice_list');if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}
   renderApp();
  }catch(e){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');}
 }
@@ -225,7 +294,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;await cloud.auth.signOut();user=null;profile=null;data=null;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -246,7 +315,7 @@ async function castVote(meetingId,status,reason=''){
 }
 async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
- const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&trip.date<today()))return alert('Dieser Ausflug ist nicht mehr zur Anmeldung offen.');
+ const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Ausflug ist nicht mehr zur Anmeldung offen.');
  if(!['yes','no'].includes(status))return;
  busy=true;renderApp();
  try{
@@ -278,6 +347,8 @@ document.addEventListener('submit',e=>{
 document.addEventListener('click',e=>{
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
+ if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
+ if(e.target.closest('#notice-ack')){acknowledgeNotice();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
  const nav=e.target.closest('[data-tab]');if(nav){tab=nav.dataset.tab;renderApp();scrollTo({top:0,behavior:'instant'});return;}
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
@@ -288,6 +359,9 @@ document.addEventListener('click',e=>{
    else castVote(vote.dataset.meetingId,'present');
  }
 });
+$('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
+$('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
+document.addEventListener('change',e=>{if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
