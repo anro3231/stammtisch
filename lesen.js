@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.14.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.13.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -12,7 +12,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let lastOnlineByMember={},lastOnlineChecked=0,birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -31,21 +31,6 @@ function memberOrder(){return [...(data?.members||[])].sort((a,b)=>(Number(a.mem
 function rsvpCounts(m){
  const values=memberOrder().filter(p=>p.active!==false).map(p=>effective(m,p.id));
  return {yes:values.filter(v=>v?.status==='present').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length};
-}
-function lastOnlineText(id){
- const raw=lastOnlineByMember[id];if(!raw)return 'Zuletzt online: Noch keine Aktivität';
- const d=new Date(raw);return Number.isFinite(d.getTime())?'Zuletzt online: '+new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)+' Uhr':'Zuletzt online: Unbekannt';
-}
-async function updateOnlinePresence(force=false){
- if(!cloud||!user||!profile?.member_id||document.hidden)return;
- if(!force&&Date.now()-lastOnlineChecked<60000)return;lastOnlineChecked=Date.now();
- const {error}=await cloud.rpc('fantastix_presence_heartbeat');if(error)console.warn('Online-Status: SQL 19 erforderlich',error.message);
-}
-async function loadOnlinePresence(){
- if(!cloud||!user||!profile?.member_id)return;
- const {data:rows,error}=await cloud.rpc('fantastix_presence_list');
- if(error){console.warn('Online-Status: SQL 19 erforderlich',error.message);return;}
- lastOnlineByMember=Object.fromEntries((rows||[]).map(r=>[r.member_id,r.last_seen_at]));
 }
 function avatarFor(id){const url=avatarUrls[id];return url?`<img class="member-photo" src="${esc(url)}" alt="" loading="lazy">`:`<span class="member-photo member-photo-placeholder">${esc((memberName(id)||'?').trim().slice(0,1).toUpperCase())}</span>`;}
 async function loadAvatars(force=false){
@@ -81,11 +66,11 @@ function voteTime(value){
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
- return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} dabei · ${count.no} nicht dabei · ${count.open} offen</small></div>
+ return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id);
- return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='present'&&a.note?`<small class="vote-note">📝 ${esc(a.note)}</small>`:''}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
- <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Dabei':'× Nicht dabei'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}</div></div>`;
+ return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
+ <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Da':'× Nicht da'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
 }
 
@@ -95,7 +80,7 @@ function tripLastDate(x){return x.endDate||x.date||'';}
 function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
 function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,no:votes.filter(v=>v.status==='no').length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} dabei · ${excursionCount(x.id).no} nicht dabei</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}</span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} da · ${excursionCount(x.id).no} nicht da</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -120,15 +105,6 @@ function renderGate(msg=''){
  }
  $('#auth-gate').innerHTML=`<section class="card auth-card"><h2>Freigabe ausstehend</h2><p class="muted">${esc(displayAccount())} ist angemeldet, aber noch keinem Mitglied zugeordnet.</p>${msg?`<p class="notice warning">${esc(msg)}</p>`:''}<div class="stack"><button class="button" id="reader-retry" type="button">Freigabe prüfen</button><button class="ghost" id="reader-logout" type="button">Abmelden</button></div></section>`;
 }
-
-/* Dauerhafte Benachrichtigungen getrennt von einmaligen Pop-ups */
-let fxAlerts=[],fxAlertLastLoad=0;
-const fxUnread=()=>fxAlerts.filter(x=>!x.read_at).length;
-function fxRenderBell(){const btn=$('#reader-inbox-btn');if(!btn)return;const n=fxUnread();btn.innerHTML=`🔔${n?`<span class="fx-bell-count">${n>99?'99+':n}</span>`:''}`;btn.setAttribute('aria-label',`Benachrichtigungen: ${n} ungelesen`);btn.hidden=!user||!profile?.member_id;}
-async function fxLoadAlerts(force=false){if(!cloud||!user||!profile?.member_id)return;if(!force&&Date.now()-fxAlertLastLoad<12000)return;try{const {data:rows,error}=await cloud.rpc('fantastix_inbox_list');if(error)throw error;fxAlerts=rows||[];fxAlertLastLoad=Date.now();fxRenderBell();}catch(e){console.warn('Benachrichtigungen: SQL 18 prüfen',e.message);}}
-function fxInboxHTML(){return `<div class="fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button id="reader-inbox-close" class="close" type="button">×</button></div><p class="hint">${fxUnread()} ungelesen · Neueste 100 Meldungen</p>${fxAlerts.length?fxAlerts.map(x=>`<div class="fx-inbox-item ${x.read_at?'':'unread'}"><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${esc(dateTime(x.created_at))}</small>${!x.read_at?`<div class="fx-inbox-buttons"><button data-fx-read="${Number(x.id)}" type="button">Als gelesen markieren</button></div>`:''}</div>`).join(''):'<p class="muted">Noch keine Benachrichtigungen.</p>'}<div class="fx-inbox-buttons"><button id="reader-inbox-all" type="button">Alle als gelesen markieren</button></div></div>`;}
-async function fxOpenInbox(){await fxLoadAlerts(true);const dlg=$('#reader-inbox-dialog');dlg.innerHTML=fxInboxHTML();dlg.showModal();}
-async function fxMarkAlerts(id=null){const {error}=await cloud.rpc('fantastix_inbox_read',{p_id:id});if(error)return alert(error.message);await fxLoadAlerts(true);const dlg=$('#reader-inbox-dialog');if(dlg.open)dlg.innerHTML=fxInboxHTML();}
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
@@ -136,7 +112,7 @@ function renderApp(){
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
  $('#content').innerHTML=({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
- $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);fxRenderBell();
+ $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
  const completed=data.meetings.filter(m=>m.date<=today()).sort((a,b)=>b.date.localeCompare(a.date));
@@ -156,36 +132,17 @@ function dashboard(){
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  `;
 }
-function meetingVoteDeadline(m){
- const server=deadlines.get(m.id);
- if(server){const d=new Date(server);if(Number.isFinite(d.getTime()))return d;}
- // Falls der Server noch keine Frist geliefert hat, die veröffentlichte Einstellung nutzen.
- if(!m.date)return null;
- const t=/^\d{2}:\d{2}$/.test(m.time||'')?m.time:'18:30';
- const h=Number(data?.rsvpCutoffHours ?? (Number(data?.rsvpCutoffDays ?? 1)*24));
- if(!Number.isFinite(h)||h<0||h>720)return null;
- const [y,mo,d]=m.date.split('-').map(Number),[hh,mm]=t.split(':').map(Number);
- // Zeitzonen-Differenz inklusive Sommerzeit über Intl ermitteln.
- let utc=Date.UTC(y,mo-1,d,hh,mm);
- for(let i=0;i<3;i++){
-  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc)).filter(x=>x.type!=='literal').map(x=>[x.type,Number(x.value)]));
-  const shown=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute);
-  utc+=Date.UTC(y,mo-1,d,hh,mm)-shown;
- }
- return new Date(utc-h*3600000);
-}
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
  const own=effective(m,profile.member_id);
- const locked=false; // Admin-Korrekturen sperren Mitglieder nicht mehr.
- const cutoff=meetingVoteDeadline(m);
- const closed=!cutoff||Date.now()>=cutoff.getTime();
+ const locked=!!(own&&coalesceSource(own)!=='member');
+ const deadline=deadlines.get(m.id),closed=deadline?Date.now()>=new Date(deadline).getTime():true;
  const status=own?.status||'';
- const summary=cutoff?(closed?'Abstimmungsfrist abgelaufen':'Änderbar bis '+deadlineLabel(cutoff.toISOString())):'Abstimmungsfrist nicht verfügbar';
+ const summary=locked?'Vom Admin korrigiert':closed?'Abstimmung geschlossen':`Bis ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Dabei</button>
- <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht dabei</button></div>
- ${status==='present'&&own?.note?`<small class="vote-note">📝 ${esc(own.note)}</small>`:''}${status?`<small class="muted">${status==='present'?'Dabei':'Nicht dabei'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
+ <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Da</button>
+ <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht da</button></div>
+ ${status?`<small class="muted">${status==='present'?'Zusage':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
 function meetings(){
@@ -208,9 +165,9 @@ function excursions(){
  return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':tripDateLabel(x)}</span></div>
  ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
- <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Dabei':own?.status==='no'?'Nicht dabei':'Noch offen'}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>✓ Dabei</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>× Nicht dabei</button></div>
- ${own?.status==='yes'&&own.note?`<small class="vote-note">📝 ${esc(own.note)}</small>`:''}<small class="muted">${own?.admin_locked?'Deine Rückmeldung wurde vom Admin korrigiert.':'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
+ <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
+ <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError||own?.admin_locked?'disabled':''}>× Nicht da</button></div>
+ <small class="muted">${own?.admin_locked?'Deine Rückmeldung wurde vom Admin korrigiert.':'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
@@ -242,7 +199,7 @@ async function deleteMyBirthday(){
 }
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
- return `${heading('Mitglieder')}<section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section><section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small><small class="member-last-online">${esc(lastOnlineText(m.id))}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>${pushPromptHTML()}`;
+ return `${heading('Mitglieder')}<section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section><section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>${pushPromptHTML()}`;
 }
 function cash(){
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
@@ -397,11 +354,11 @@ async function refresh(){
   const d=pub.data.content;
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
   if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Eventsdaten.');d.excursions=d.excursions||[];
-  data=d;await updateOnlinePresence();await loadOnlinePresence();fxLoadAlerts(true).catch(()=>{});deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
+  data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
   if(section('excursions')){
     const res=await cloud.rpc('fantastix_excursion_votes_read_v2');
     if(res.error){excursionVoteError='Eventszusagen derzeit nicht verfügbar. SQL-Update 09 prüfen.';excursionVotes=[];console.warn(res.error);}
-    else{excursionVotes=res.data||[];const notes=await cloud.rpc('fantastix_excursion_vote_notes_read');if(notes.error)throw notes.error;const map=new Map((notes.data||[]).map(x=>[x.excursion_id+'|'+x.member_id,x.note]));excursionVotes.forEach(v=>v.note=map.get(v.excursion_id+'|'+v.member_id)||'');excursionVoteError='';}
+    else{excursionVotes=res.data||[];excursionVoteError='';}
   }else{excursionVotes=[];excursionVoteError='';}
 
   try{await loadBirthdays();}catch(e){console.warn('Geburtstage nicht verfügbar:',e);birthdays=[];}
@@ -455,76 +412,46 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;fxAlerts=[];fxRenderBell();await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};lastOnlineByMember={};lastOnlineChecked=0;birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
-async function castVote(meetingId,status,reason='',note='',keepDialog=false){
- const dlg=$('#absence-dialog');
- const info=()=>dlg?.querySelector('#vote-save-status');
- const report=(message,failed=false)=>{
-   const el=info();
-   if(el){el.textContent=message;el.style.color=failed?'#b91c1c':'inherit';}
-   else alert(message);
- };
- const button=dlg?.querySelector('#yes-note-form button[type="submit"]');
- if(busy){report('Bitte warten: Ein anderer Vorgang läuft noch.',true);return;}
- if(!data||!profile?.member_id){report('Mitgliedskonto nicht geladen. Bitte Seite neu öffnen.',true);return;}
- const m=data.meetings.find(x=>x.id===meetingId);
- if(!m){report('Stammtisch nicht gefunden.',true);return;}
- const cutoff=meetingVoteDeadline(m);
- if(!cutoff||Date.now()>=cutoff.getTime()){report('Die Abstimmungsfrist ist abgelaufen.',true);return;}
- if(status==='absent'&&!reason.trim()){report('Bitte einen Grund eintragen.',true);return;}
- if(note.length>160){report('Bitte höchstens 160 Zeichen eingeben.',true);return;}
- busy=true;if(button)button.disabled=true;
- report('Speichere deine Stimme …');
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function castVote(meetingId,status,reason=''){
+ if(busy||!data||!profile?.member_id)return;
+ const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
+ const deadline=deadlines.get(meetingId);
+ if(!deadline||Date.now()>=new Date(deadline).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
+ const own=effective(m,profile.member_id);
+ if(own&&coalesceSource(own)!=='member')return alert('Der Admin hat die Stimme korrigiert.');
+ if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
+ busy=true;renderApp();
  try{
-   const result=await cloud.rpc('fantastix_cast_vote',{
-     p_meeting_id:meetingId,p_status:status,p_reason:status==='absent'?reason.trim():'',p_note:status==='present'?note.trim():''
+   const {error}=await cloud.rpc('fantastix_cast_vote',{
+     p_meeting_id:meetingId,p_status:status,p_reason:status==='absent'?reason.trim():''
    });
-   if(result.error)throw result.error;
-   // Unabhängig vom Dashboard direkt die veröffentlichte Datenbank prüfen.
-   const pub=await cloud.from('fantastix_public').select('content').eq('id','main').eq('is_published',true).maybeSingle();
-   if(pub.error)throw pub.error;
-   const saved=pub.data?.content?.meetings?.find(x=>x.id===meetingId)?.attendance?.[profile.member_id];
-   if(saved?.status!==status)throw Error('Supabase hat geantwortet, aber die veröffentlichte Stimme lautet weiterhin '+(saved?.status||'offen')+'.');
-   if(status==='present'&&(saved.note||'')!==note.trim())throw Error('Zusage gespeichert, aber die Notiz wurde nicht übernommen.');
-   report(status==='present'?'✓ Dabei und Notiz erfolgreich gespeichert.':'✓ Nicht dabei gespeichert.');
-   if(keepDialog){
-     const form=dlg?.querySelector('#yes-note-form');
-     if(form){const submit=form.querySelector('button[type="submit"]');if(submit)submit.textContent='Gespeichert';}
-   }
-   // Dashboard erst aktualisieren, nachdem die Erfolgsmeldung sichtbar ist.
-   try{await refresh();}catch(e){console.warn('Nachladen:',e);}
-   if(!keepDialog&&dlg?.open)dlg.close();
- }catch(e){report('Nicht gespeichert: '+(e?.message||String(e)),true);}
- finally{busy=false;if(button&&button.isConnected&&button.textContent!=='Gespeichert')button.disabled=false;}
+   if(error)throw error;
+   await refresh();
+ }catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
+ finally{busy=false;if(data)renderApp();}
 }
-async function voteExcursion(id,status,note=''){
+async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
  const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Event ist nicht mehr zur Anmeldung offen.');
  if(!['yes','no'].includes(status))return;
- if(note.length>160)return alert('Bitte höchstens 160 Zeichen eingeben.');
  if(excursionOwn(trip)?.admin_locked)return alert('Der Administrator hat deine Rückmeldung korrigiert.');
  busy=true;renderApp();
  try{
-   const {error}=await cloud.rpc('fantastix_excursion_vote',{p_excursion_id:id,p_status:status,p_note:status==='yes'?note.trim():''});
+   const {error}=await cloud.rpc('fantastix_excursion_vote',{p_excursion_id:id,p_status:status});
    if(error)throw error;
    await refresh();
  }catch(e){alert('Rückmeldung nicht gespeichert: '+(e.message||String(e)));}
  finally{busy=false;if(data)renderApp();}
 }
-function askYesNote(kind,id){
- const dlg=$('#absence-dialog');
- const saved=kind==='meeting'?effective(data.meetings.find(m=>m.id===id)||{},profile?.member_id):excursionVotes.find(v=>v.excursion_id===id&&v.member_id===profile?.member_id);
- dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>✓ Dabei</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div><form id="yes-note-form"><input type="hidden" name="kind" value="${esc(kind)}"><input type="hidden" name="id" value="${esc(id)}"><div class="field"><label>Notiz (optional · für alle Mitglieder sichtbar)</label><input name="note" maxlength="160" value="${esc(saved?.note||'')}" placeholder="z. B. Komme später"></div><p class="hint">Alle freigeschalteten Mitglieder können deine Notiz zur Zusage lesen.</p><div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Dabei speichern</button></div><p id="vote-save-status" role="status" aria-live="polite" style="margin:12px 0;font-weight:600"></p></form></div>`;
- dlg.showModal();
-}
 function askAbsenceReason(meetingId){
  const meeting=data?.meetings?.find(m=>m.id===meetingId);
  const saved=meeting?effective(meeting,profile?.member_id):null;
  const dlg=$('#absence-dialog');
- dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>Grund für „Nicht dabei“</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div>
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>Grund für „Nicht da“</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div>
  <form id="absence-reason-form"><input type="hidden" name="meetingId" value="${esc(meetingId)}"><div class="field"><label>Abwesenheitsgrund *</label>
  <input name="reason" maxlength="150" minlength="1" value="${esc(saved?.status==='absent'?saved.reason||'':'')}" placeholder="z. B. Urlaub, beruflich verhindert" required autofocus></div>
- <div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Nicht dabei speichern</button></div></form></div>`;
+ <div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Nicht da speichern</button></div></form></div>`;
  dlg.showModal();
 }
 document.addEventListener('submit',e=>{
@@ -532,7 +459,6 @@ document.addEventListener('submit',e=>{
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
  if(e.target.id==='birthday-form'){e.preventDefault();saveMyBirthday(e.target);}
  if(e.target.id==='member-notice-form'){e.preventDefault();sendMemberNotice(e.target);}
- if(e.target.id==='yes-note-form'){e.preventDefault();const fd=new FormData(e.target),note=String(fd.get('note')||'').trim();if(fd.get('kind')==='meeting'){castVote(String(fd.get('id')),'present','',note,true).catch(err=>{const el=$('#vote-save-status');if(el)el.textContent='Fehler: '+String(err);});}else{$('#absence-dialog').close();voteExcursion(String(fd.get('id')),'yes',note);}}
  if(e.target.id==='absence-reason-form'){
    e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
    if(!reason)return alert('Bitte einen Abwesenheitsgrund eintragen.');
@@ -541,10 +467,6 @@ document.addEventListener('submit',e=>{
 });
 document.addEventListener('click',e=>{
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
- if(e.target.closest('#reader-inbox-btn')){fxOpenInbox();return;}
- if(e.target.closest('#reader-inbox-close')){$('#reader-inbox-dialog').close();return;}
- if(e.target.closest('#reader-inbox-all')){fxMarkAlerts(null);return;}
- const fxRead=e.target.closest('[data-fx-read]');if(fxRead){fxMarkAlerts(Number(fxRead.dataset.fxRead));return;}
  if(e.target.closest('#reader-logout')){logout();return;}
  if(e.target.closest('#push-enable')){enablePush();return;}
  if(e.target.closest('#push-disable')){disablePush();return;}
@@ -565,10 +487,10 @@ document.addEventListener('click',e=>{
  }
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
  if(e.target.closest('#close-absence,#cancel-absence')){$('#absence-dialog').close();return;}
- const excursion=e.target.closest('[data-excursion-vote]');if(excursion){if(excursion.dataset.excursionVote==='yes')askYesNote('event',excursion.dataset.excursionId);else voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
+ const excursion=e.target.closest('[data-excursion-vote]');if(excursion){voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
  const vote=e.target.closest('[data-vote]');if(vote){
    if(vote.dataset.vote==='absent')askAbsenceReason(vote.dataset.meetingId);
-   else askYesNote('meeting',vote.dataset.meetingId);
+   else castVote(vote.dataset.meetingId,'present');
  }
 });
 $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
@@ -577,5 +499,4 @@ document.addEventListener('change',e=>{if(e.target.id==='reader-ranking-year'){y
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar'].includes(e.data.tab)){tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
-setInterval(()=>{if(!document.hidden&&user&&profile?.member_id)fxLoadAlerts(true);},45000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
