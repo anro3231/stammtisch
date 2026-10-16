@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.6.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -41,6 +41,7 @@ function validateBackup(v){
  if(!v.fines.every(f=>Number.isSafeInteger(f.amountCents)&&f.amountCents>=0&&typeof f.memberId==='string'&&typeof f.reason==='string'))throw Error('Ungültige Strafen.');
  if(!v.payments.every(p=>Number.isSafeInteger(p.amountCents)&&p.amountCents>=0&&typeof p.fineId==='string'))throw Error('Ungültige Zahlungen.');
  if(!v.meetings.every(m=>Object.entries(m.attendance).every(([memberId,a])=>memberId.length<250 && a && typeof a==='object' && ['present','absent'].includes(a.status) && String(a.reason||'').length<=150 && String(a.note||'').length<=300)))throw Error('Ungültige Anwesenheiten.');
+ if(v.rsvpCutoffDays!==undefined&&(!Number.isInteger(v.rsvpCutoffDays)||v.rsvpCutoffDays<0||v.rsvpCutoffDays>14))throw Error('Ungültige Abstimmungsfrist.');
  const centsOk=x=>Number.isSafeInteger(x)&&Math.abs(x)<1e12;
  if(!v.fines.every(f=>centsOk(f.amountCents) && String(f.reason).length<=600))throw Error('Ungültige Strafbeträge.');
  if(!v.payments.every(p=>centsOk(p.amountCents)))throw Error('Ungültige Zahlungsbeträge.');
@@ -108,7 +109,12 @@ function cashHistory(){
 }
 function finePaid(id){return data.payments.filter(p=>p.fineId===id).reduce((s,p)=>s+n(p.amountCents),0);}
 function fineOpen(f){return Math.max(0,n(f.amountCents)-finePaid(f.id));}
-function stats(id,year){const meetings=data.meetings.filter(m=>doneMeeting(m)&&(!year||yearOf(m.date)===String(year)));const present=meetings.filter(m=>m.attendance?.[id]?.status==='present').length;const eligible=meetings.filter(m=>Object.hasOwn(m.attendance||{},id)).length;return {present,eligible,pct:eligible?Math.round(100*present/eligible):0};}
+let readerProfiles = [], readerVotes = [];
+function voteFor(meetingId,memberId){return readerVotes.find(v=>v.meeting_id===meetingId&&v.member_id===memberId)||null;}
+function effectiveAttendance(m,id){const own=m.attendance?.[id];return own&&['present','absent'].includes(own.status)?own:null;}
+function stats(id,year){const meetings=data.meetings.filter(m=>doneMeeting(m)&&(!year||yearOf(m.date)===String(year)));const present=meetings.filter(m=>effectiveAttendance(m,id)?.status==='present').length;const eligible=meetings.filter(m=>!!effectiveAttendance(m,id)).length;return {present,eligible,pct:eligible?Math.round(100*present/eligible):0};} 
+function leaders(year){const rows=rankRows(year);return rows.length&&rows[0].count>0?rows.filter(m=>m.count===rows[0].count):[];}
+function voteDeadlineDays(){const v=Number(data.rsvpCutoffDays);return Number.isInteger(v)&&v>=0&&v<=14?v:1;}
 function allTime(id){return n(member(id)?.historicalCount)+stats(id).present;}
 function rankRows(year){return [...data.members].sort((a,b)=>(year?yearCount(b.id,year)-yearCount(a.id,year):allTime(b.id)-allTime(a.id))||a.name.localeCompare(b.name,'de')).map((m,i)=>({...m,place:i+1,count:year?yearCount(m.id,year):allTime(m.id),pct:stats(m.id,year).pct}));}
 function icon(k){const paths={home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/>',meetings:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 15l2 2 5-5"/>',members:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',ranking:'<path d="M8 21h8M12 17v4M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4M17 6h4v2a4 4 0 0 1-4 4"/>',fines:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M16 15h2M7 3v2"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.3 2.3-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.3-2.3.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4v-3.2h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.3-2.3.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V4h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.3 2.3-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v3.2h-.2a1.7 1.7 0 0 0-1.6 1z"/>',cloud:'<path d="M20 16.6a4 4 0 0 0-2-7.5A6 6 0 0 0 6.4 10 4 4 0 0 0 7 18h11"/><path d="m10 15 2 2 4-4"/>'};return `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[k]||paths.home}</svg>`;}
@@ -117,32 +123,31 @@ function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,la
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
 function homeHTML(){
-  const completed=data.meetings.filter(doneMeeting).sort((a,b)=>b.date.localeCompare(a.date));
-  const latest=completed.slice(0,4),next=upcomingMeeting(),days=next?calendarDaysUntil(next.date):null;
-  const finesTotal=data.fines.reduce((sum,f)=>sum+n(f.amountCents),0);
-  const paid=data.payments.reduce((sum,p)=>sum+n(p.amountCents),0);
-  const leader=yearLeader();
-  const organizer=next?member(next.organizerId):suggestedOrganizer(today());
-  return `${pageHead('','Dashboard','')}
-    <div class="metric-grid dashboard-stats">
-      <div class="metric"><small>Stammtische gesamt</small><div class="value">${DASHBOARD_MEETING_START+completed.length}</div></div>
-      <div class="metric"><small>Offene Strafen</small><div class="value red">${money(finesTotal-paid)}</div></div>
-      <div class="metric"><small>Tage bis zum nächsten</small><div class="value">${days===null?'–':days}</div></div>
-      <div class="metric"><small>Jahresführender ${yearOf(today())}</small><div class="value leader-name">${leader?esc(leader.name):'–'}</div><small>${leader?`${leader.count} Teilnahmen`:''}</small></div>
-    </div>
-    <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
-      ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p><button class="button" data-action="meeting-new">+ Stammtisch planen</button>'}
-    </section>
-    <div class="toolbar"><button class="button" data-action="meeting-new">+ Stammtisch</button><button class="ghost" data-action="member-new">+ Mitglied</button></div>
-    <div class="cols-main"><section class="card"><h2>Letzte Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${Object.values(m.attendance||{}).filter(a=>a.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
-    <section class="card"><h2>Top 3 · Ewig</h2>${data.members.length?`<div class="list">${rankRows(null).slice(0,3).map((m,i)=>`<div class="item"><span style="font-size:22px">${['🥇','🥈','🥉'][i]}</span><div class="details"><strong>${esc(m.name)}</strong><small>${m.count} Teilnahmen</small></div><strong class="number">${m.count}</strong></div>`).join('')}</div>`:empty('🏆','Noch keine Platzierungen')}<div class="separator"></div><button class="ghost" data-page="ranking">Ranglisten öffnen</button></section></div>`;
+ const completed=data.meetings.filter(doneMeeting).sort((a,b)=>b.date.localeCompare(a.date));
+ const latest=completed.slice(0,2),next=upcomingMeeting(),days=next?calendarDaysUntil(next.date):null;
+ const pending=data.fines.reduce((sum,f)=>sum+fineOpen(f),0);
+ const yearBest=leaders(yearOf(today())), allBest=leaders(null);
+ const organizer=next?member(next.organizerId):suggestedOrganizer(today());
+ const leaderList=(list)=>list.length?`<div class="leader-list">${list.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${list[0].count} Teilnahmen</small>`:`<div class="value">–</div>`;
+ return `${pageHead('','Dashboard','')}
+  <div class="metric-grid dashboard-stats dashboard-v36">
+   <div class="metric"><small>Tage bis zum Stammtisch</small><div class="value">${days===null?'–':days}</div></div>
+   <div class="metric"><small>Jahresführende ${yearOf(today())}</small>${leaderList(yearBest)}</div>
+   <div class="metric"><small>Ewige Rangliste · Führung</small>${leaderList(allBest)}</div>
+   <div class="metric"><small>Kontostand</small><div class="value balance-tile">${money(accountBalance())}</div><small>Offene Strafen: ${money(pending)}</small></div>
+  </div>
+  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
+   ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p><button class="button" data-action="meeting-new">+ Stammtisch planen</button>'}
+  </section>
+  <div class="toolbar"><button class="button" data-action="meeting-new">+ Stammtisch</button><button class="ghost" data-action="member-new">+ Mitglied</button></div>
+  <section class="card"><h2>Letzte 2 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>`;
 }
 function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><button class="ghost" data-action="bulk-2026">Teilnahmen 2026</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card">${members.length?`<div class="list">${members.map(m=>`<div class="item"><div class="avatar">${memberNo(m)===null?esc(initials(m.name)):memberNo(m)}</div><div class="details"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small>2026: ${yearCount(m.id,'2026')} · Ewig: ${allTime(m.id)}</small></div><button class="smallbtn" data-action="member-edit" data-id="${m.id}">Bearbeiten</button></div>`).join('')}</div>`:empty('👥','Noch keine Mitglieder')}</div>`;}
 function meetingsHTML(){
   const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date)),next=suggestedOrganizer(today());
   return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
   <div class="notice">Nächster Organisator: <strong>${next?`Nr. ${memberNo(next)} · ${esc(next.name)}`:'–'}</strong></div>
-  <div class="card">${meetings.length?`<div class="list">${meetings.map(m=>{const a=Object.values(m.attendance||{}),organizer=member(m.organizerId);return `<div class="item"><div class="avatar">${esc(String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0'))}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Kein Gasthaus')} · ${organizer?`Organisator: ${esc(organizer.name)}`:'Organisator offen'}<br>${a.filter(x=>x.status==='present').length} da · ${a.filter(x=>x.status==='absent').length} fehlt · ${data.members.filter(p=>p.active!==false&&!m.attendance?.[p.id]).length} offen</small></div><span class="chip ${doneMeeting(m)?'':'gray'}">${doneMeeting(m)?'Vergangen':'Geplant'}</span><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`}).join('')}</div>`:empty('📅','Keine Stammtische')}</div>`;
+  <div class="card">${meetings.length?`<div class="list">${meetings.map(m=>{const a=data.members.map(person=>effectiveAttendance(m,person.id)).filter(Boolean),organizer=member(m.organizerId);return `<div class="item"><div class="avatar">${esc(String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0'))}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Kein Gasthaus')} · ${organizer?`Organisator: ${esc(organizer.name)}`:'Organisator offen'}<br>${a.filter(x=>x.status==='present').length} da · ${a.filter(x=>x.status==='absent').length} fehlt · ${data.members.filter(p=>p.active!==false&&!effectiveAttendance(m,p.id)).length} offen</small></div><span class="chip ${doneMeeting(m)?'':'gray'}">${doneMeeting(m)?'Vergangen':'Geplant'}</span><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`}).join('')}</div>`:empty('📅','Keine Stammtische')}</div>`;
 }
 function rankingHTML(){const years=[...new Set(['2026',yearOf(today()),...data.meetings.map(m=>yearOf(m.date))])].filter(Boolean).sort().reverse();const isAll=rankYear==='all';const rows=rankRows(isAll?null:rankYear);return `${pageHead('','Ranglisten','')}<div class="card"><div class="toolbar" style="margin:0 0 14px"><div class="pill-group"><button class="pill ${isAll?'selected':''}" data-action="rank-year" data-year="all">Ewig</button>${years.map(y=>`<button class="pill ${rankYear===y?'selected':''}" data-action="rank-year" data-year="${y}">${y}</button>`).join('')}</div></div>${rows.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${rows.map((m,i)=>`<tr><td><strong>${i<3?['🥇','🥈','🥉'][i]:i+1+'.'}</strong></td><td>${memberNo(m)!==null?`<span class="muted">Nr. ${memberNo(m)}</span> · `:''}${esc(m.name)}${m.active===false?' <span class="chip gray">Archiv</span>':''}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div>`:empty('🏆','Noch keine Mitglieder')}</div>`;}
 function finesHTML(){
@@ -171,11 +176,12 @@ function settingsHTML(){
  const cfg=getCloudConfig();const active=cloudReady&&cloudUser;
  const sync=active?`<span class="chip">Administrator</span>`:cloudStatus==='error'?`<span class="chip red">Fehler</span>`:`<span class="chip gray">Lokal</span>`;
  return `${pageHead('','Mehr','')}<section class="card"><div class="row"><h2>FantastiX</h2><span class="version-tag">Version ${APP_VERSION}</span></div></section>
- <section class="card"><div class="row"><h2>Cloud & öffentlicher Link</h2>${sync}</div>
+ <section class="card"><div class="row"><h2>Cloud & Leser</h2>${sync}</div>
  <p class="hint">${esc(syncMessage)}</p>
  <div class="stack"><button class="button" data-action="cloud-setup">${cloudUser?'Cloud & Freigaben':'Als Administrator anmelden'}</button>
  ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
- <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Öffentliche Leseansicht ↗</a></div></section>
+ <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
+ <section class="card"><h2>Abstimmung & Leserzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Leser mit Mitgliedern verknüpfen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineDays()} Tag(e)</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
 }
@@ -197,11 +203,12 @@ function meetingForm(id){
  const proposed=m.organizerId||(suggestedOrganizer(m.date,m.id)?.id||'');
  modal(id?'Stammtisch bearbeiten':'Neuer Stammtisch',`<form data-form="meeting"><input type="hidden" name="id" value="${esc(m.id)}">
  <div class="field"><label>Datum</label><input type="date" name="date" value="${esc(m.date)}" required></div>
+ <div class="field"><label>Uhrzeit</label><input type="time" name="time" value="${esc(m.time||'19:00')}" required></div>
  <div class="field"><label>Gasthaus</label><input name="location" maxlength="120" value="${esc(m.location)}" placeholder="Gasthaus auswählen oder eingeben" style="width:100%"></div>
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const readerVote=voteFor(m.id,person.id);const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${readerVote?`<div class="hint vote-origin">Mitglied hat abgestimmt: <b>${readerVote.status==='present'?'Da':'Nicht da'}</b>${entry.status?' · Admin-Entscheidung gilt':''}</div>`:''}${absenceFields(person.id,entry,linkedFine)}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
 }
 function fineForm(){
@@ -255,7 +262,8 @@ function saveMeeting(fd){
    }
  }
  for(const item of fineChanges){const existingFine=data.fines.find(f=>f.meetingId===mtId&&f.memberId===item.memberId&&f.source==='absence');if(existingFine&&item.amount<finePaid(existingFine.id))return alert(`Der Strafbetrag darf nicht unter den bereits bezahlten Betrag ${money(finePaid(existingFine.id))} gesenkt werden.`);}
- const record={id:mtId,date,location,notes,organizerId:organizerId||null,finalized:true,attendance,createdAt:previousMeeting?.createdAt||new Date().toISOString()};
+ const time=String(fd.get('time')||'19:00');if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return alert('Bitte eine gültige Uhrzeit auswählen.');
+ const record={id:mtId,date,time,location,notes,organizerId:organizerId||null,finalized:true,attendance,createdAt:previousMeeting?.createdAt||new Date().toISOString()};
  if(id)data.meetings=data.meetings.map(m=>m.id===id?record:m);else data.meetings.push(record);
  data.fines=data.fines.filter(f=>!(f.meetingId===mtId&&f.source==='absence'&&attendance[f.memberId]?.status!=='absent'));
  for(const item of fineChanges){const existingFine=data.fines.find(f=>f.meetingId===mtId&&f.memberId===item.memberId&&f.source==='absence');
@@ -277,6 +285,44 @@ function savePayment(fd){
  data.payments.push({id:uid(),fineId:fine.id,date:today(),amountCents:amount,method:String(fd.get('method')||'Bar'),note:String(fd.get('note')||'').trim()});
  closeModal();persist();
 }
+async function reloadReaderAdminData(){
+ if(!cloudReady||!cloudUser||!cloudClient)return;
+ const [profiles,votes]=await Promise.all([
+  cloudClient.from('fantastix_reader_profiles').select('user_id,email,member_id,registered_at').order('registered_at',{ascending:false}),
+  cloudClient.from('fantastix_reader_votes').select('meeting_id,member_id,user_id,status,updated_at')
+ ]);
+ if(profiles.error)throw profiles.error;if(votes.error)throw votes.error;
+ readerProfiles=profiles.data||[];readerVotes=votes.data||[];
+}
+async function readerAccess(){
+ if(!cloudReady){alert('Bitte zuerst als Administrator mit der Cloud verbinden.');return;}
+ try{await reloadReaderAdminData();}
+ catch(e){alert('Leser konnten nicht geladen werden: '+e.message);return;}
+ const people=readerProfiles.filter(p=>p.user_id!==cloudUser.id);
+ modal('Leser mit Mitgliedern verknüpfen',`<p class="hint">Neue Konten erscheinen nach der Registrierung. Je Mitglied ist ein Leserzugang möglich.</p><form data-form="reader-access">
+ ${people.length?people.map(p=>`<div class="reader-admin-row"><div><strong>${esc(p.email||p.user_id)}</strong><small> ${p.member_id?'Verknüpft':'Wartet auf Zuordnung'}</small></div><select name="reader-${esc(p.user_id)}" aria-label="Zuordnung ${esc(p.email)}"><option value="">Nicht zugeordnet</option>${[...data.members].sort(byMemberNo).map(m=>`<option value="${esc(m.id)}" ${p.member_id===m.id?'selected':''}>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</option>`).join('')}</select></div>`).join(''):'<div class="notice">Noch keine Leser registriert.</div>'}
+ ${people.length?footer('Verknüpfungen speichern'):'<button class="ghost" type="button" data-action="close">Schließen</button>'}</form>`);
+}
+async function saveReaderAccess(fd){
+ if(!cloudReady)return alert('Cloud-Verbindung erforderlich.');
+ const rows=readerProfiles.filter(p=>p.user_id!==cloudUser.id),used=new Set();
+ const selections=rows.map(p=>({user_id:p.user_id,member_id:String(fd.get('reader-'+p.user_id)||'')||null}));
+ for(const r of selections){if(r.member_id&&!member(r.member_id))return alert('Unbekanntes Mitglied.');if(r.member_id&&used.has(r.member_id))return alert('Ein Mitglied kann nur einem Leser zugeordnet werden.');if(r.member_id)used.add(r.member_id);}
+ try{
+  // Erst entfernte Zuordnungen lösen, dann neue setzen: keine transienten UNIQUE-Konflikte.
+  for(const r of selections.filter(r=>r.member_id!==readerProfiles.find(p=>p.user_id===r.user_id)?.member_id)){
+   const old=readerProfiles.find(p=>p.user_id===r.user_id);
+   if(old?.member_id){const {error}=await cloudClient.from('fantastix_reader_profiles').update({member_id:null}).eq('user_id',r.user_id);if(error)throw error;}
+  }
+  for(const r of selections.filter(r=>r.member_id)){
+   const {error}=await cloudClient.from('fantastix_reader_profiles').update({member_id:r.member_id}).eq('user_id',r.user_id);if(error)throw error;
+  }
+  await reloadReaderAdminData();closeModal();alert('Leserzugänge aktualisiert.');
+ }catch(e){alert('Zuordnung fehlgeschlagen: '+e.message+' (Bitte Liste neu öffnen und Stand prüfen.)');}
+}
+function voteSettingsForm(){modal('Abstimmungsfrist',`<form data-form="vote-settings"><div class="field"><label>Tage vor dem Stammtisch</label><input name="days" type="number" min="0" max="14" step="1" value="${voteDeadlineDays()}" required></div><p class="hint">1 = Abstimmung bis 24 Stunden vor der eingetragenen Uhrzeit. 0 = bis zum Beginn. Es gilt die Zeitzone Wien.</p>${footer('Frist speichern')}</form>`);}
+function saveVoteSettings(fd){const days=Number(fd.get('days'));if(!Number.isInteger(days)||days<0||days>14)return alert('Bitte 0 bis 14 Tage eingeben.');data.rsvpCutoffDays=days;closeModal();persist();}
+
 function closeModal(){if($('#dialog').open)$('#dialog').close();}
 function download(content,name,mime){const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);}
 function exportJSON(){download(JSON.stringify(data,null,2),`FantastiX_Backup_${today()}.json`,'application/json;charset=utf-8');}
@@ -316,15 +362,15 @@ function cloudForm(){
   <div class="stack" style="margin:14px 0"><button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>
    ${!cloudReady?`<button class="button" data-action="cloud-choose">Datenbestand auswählen</button>`:''}
    <button class="ghost" data-action="cloud-logout">Administrator abmelden</button></div>
-  <div class="separator"></div><h3>Öffentlicher Leselink</h3>
-  <p class="hint">Freigegebene Inhalte sind für jeden mit Internetzugang lesbar – ohne Anmeldung.</p>
+  <div class="separator"></div><h3>Geschützte Leseransicht</h3>
+  <p class="hint">Nur registrierte und von dir einem Mitglied zugeordnete Benutzer sehen die freigegebenen Daten.</p>
   <form data-form="public-settings">
    ${[['members','Mitglieder & Ranglisten'],['meetings','Stammtische & Anwesenheiten'],['absences','Abwesenheitsgründe & Notizen'],['fines','Strafen & Zahlungen'],['cash','Kontostand & Kassenbuch']].map(([k,label])=>`<div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="${k}" ${opts[k]?'checked':''}>${label}</label></div>`).join('')}
    <div class="field"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="auto" ${opts.auto?'checked':''}>Nach Änderungen automatisch neu veröffentlichen</label></div>
-   <div class="notice warning">Strafen, Zahlungsdaten und Abwesenheitsgründe sind möglicherweise personenbezogen oder sensibel. Mit der Freigabe können sie weltweit abgerufen werden. Kläre die Zustimmung der Betroffenen vor der Veröffentlichung.</div>
+   <div class="notice warning">Strafen, Zahlungen und Abwesenheitsgründe enthalten möglicherweise sensible Angaben. Gib sie nur mit entsprechender Berechtigung frei.</div>
    <div class="stack" style="margin-top:13px"><button class="button" type="submit">Auswahl speichern & veröffentlichen</button><button class="ghost" type="button" data-action="cloud-unpublish">Öffentliche Ansicht abschalten</button></div>
   </form>
-  <div class="separator"></div><a class="button" href="./lesen.html" target="_blank" rel="noopener">Öffentliche Ansicht öffnen ↗</a>`);
+  <div class="separator"></div><a class="button" href="./lesen.html" target="_blank" rel="noopener">Leseransicht öffnen ↗</a>`);
 }
 async function initCloudClient(){
  const cfg=getCloudConfig();if(!cfg)throw Error('cloud-config.js muss zuerst mit Supabase-Projektdaten eingerichtet werden.');
@@ -402,6 +448,7 @@ async function syncCloud(silent=false){
   }else if(cloudDirty){queueSync();}
   else{cloudStatus='connected';syncMessage='Synchronisiert';}
   await readPublication();
+  if(cloudReady){try{await reloadReaderAdminData();}catch(e){console.warn('Leser-Abstimmungen konnten nicht geladen werden:',e);}}
  }catch(e){cloudStatus='error';syncMessage=e.message||String(e);if(!silent)alert('Cloud-Synchronisierung: '+syncMessage);}
  render();
 }
@@ -434,18 +481,18 @@ function queueSync(){
 function publicSnapshot(opts){
  const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
  const members=allowMembers?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)})):[];
- const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,attendance:Object.fromEntries(Object.entries(m.attendance||{}).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||''}:{status:v.status}]))})):[];
+ const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'19:00',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:'admin'}:{status:v.status,source:'admin'}]))})):[];
  const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
- return {schemaVersion:1,publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,fines,payments,cashbook};
+ return {schemaVersion:2,rsvpCutoffDays:voteDeadlineDays(),publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,fines,payments,cashbook};
 }
 async function publishPublic(ask=true){
  if(publishing)return;
  if(!cloudReady||!cloudUser)throw Error('Zuerst als Administrator verbinden und synchronisieren.');
  const opts=publicSettings();
  if(!opts.members&&!opts.meetings&&!opts.fines&&!opts.cash)throw Error('Bitte mindestens einen Bereich freigeben.');
- if(ask && !confirm('Diese ausgewählten Daten werden OHNE ANMELDUNG weltweit lesbar. Bei aktivierten Strafen oder Abwesenheitsgründen können personenbezogene Daten enthalten sein. Wirklich veröffentlichen?'))return;
+ if(ask && !confirm('Diese Inhalte werden für registrierte, von dir verknüpfte Leser sichtbar. Bei sensiblen Angaben die Zustimmung beachten. Veröffentlichen?'))return;
  publishing=true;
  try{
   if(cloudDirty){await cloudUpload();if(cloudDirty)throw Error('Bitte zuerst den Cloud-Konflikt klären.');}
@@ -455,15 +502,15 @@ async function publishPublic(ask=true){
    .eq('id','main').select('is_published');
   if(error)throw error;
   if(!rows||rows.length!==1)throw Error('Keine Berechtigung zum Veröffentlichen.');
-  publicPublished=true;syncMessage='Öffentliche Ansicht aktualisiert';render();
+  publicPublished=true;syncMessage='Leseransicht aktualisiert';render();
  }finally{publishing=false;}
 }
 async function unpublishPublic(){
  if(!cloudReady)throw Error('Bitte Administrator anmelden.');
- if(!confirm('Öffentlichen Leselink deaktivieren? Die bisherigen Daten bleiben privat gespeichert.'))return;
+ if(!confirm('Leserfreigabe deaktivieren? Die bisherigen Daten bleiben privat gespeichert.'))return;
  const {data:rows,error}=await cloudClient.from('fantastix_public').update({is_published:false,published_at:null}).eq('id','main').select('is_published');
  if(error)throw error;if(!rows||rows.length!==1)throw Error('Keine Administratorberechtigung.');
- publicPublished=false;const opts=publicSettings();opts.auto=false;savePublicSettings(opts);syncMessage='Öffentliche Ansicht deaktiviert';render();
+ publicPublished=false;const opts=publicSettings();opts.auto=false;savePublicSettings(opts);syncMessage='Leseransicht deaktiviert';render();
 }
 
 
@@ -474,7 +521,7 @@ document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-a
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();}break;}
  case'payment-delete':{const p=data.payments.find(x=>x.id===id);if(p&&confirm('Diese Zahlung stornieren? Der Betrag wird wieder offen.')){const fid=p.fineId;data.payments=data.payments.filter(x=>x.id!==id);closeModal();persist();fineView(fid);}break;}
  case'fine-delete':{const f=data.fines.find(x=>x.id===id);if(f&&!finePaid(f.id)&&confirm('Diese noch unbezahlte Strafe löschen?')){data.fines=data.fines.filter(x=>x.id!==id);closeModal();persist();}break;}
- case'cloud-setup':cloudForm();break;
+ case'reader-access':await readerAccess();break;case'vote-settings':voteSettingsForm();break;case'cloud-setup':cloudForm();break;
  case'cloud-check':closeModal();await syncCloud();break;
  case'cloud-choose':closeModal();await syncCloud();break;
  case'cloud-download':if(pendingRemote&&confirm('Lokale Daten durch den Cloud-Stand ersetzen? Vorher JSON sichern!')){adoptCloud(pendingRemote);pendingRemote=null;closeModal();}break;
@@ -484,13 +531,13 @@ document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-a
  }
 });
 $('#dialog').addEventListener('submit',async ev=>{ev.preventDefault();const form=ev.target,fd=new FormData(form);switch(form.dataset.form){case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-auth':await cloudAuth(fd);break;
- case'public-settings':{
+ case'reader-access':await saveReaderAccess(fd);break;case'vote-settings':saveVoteSettings(fd);break;case'public-settings':{
   const opts={members:fd.has('members'),meetings:fd.has('meetings'),absences:fd.has('absences')&&fd.has('meetings'),fines:fd.has('fines'),cash:fd.has('cash'),auto:fd.has('auto')};
   if(!opts.members&&!opts.meetings&&!opts.fines&&!opts.cash){alert('Bitte mindestens einen Datenbereich auswählen.');break;}
   if(!cloudReady){alert('Bitte zuerst mit der Cloud synchronisieren.');break;}
-  if(!confirm('Achtung: Alle ausgewählten Inhalte sind danach weltweit OHNE ANMELDUNG lesbar. Das kann Namen, Abwesenheitsgründe, Strafen und Zahlungen umfassen. Wirklich freigeben?'))break;
+  if(!confirm('Achtung: Die ausgewählten Inhalte sind für deine freigegebenen Leser sichtbar, einschließlich eventuell sensibler Daten. Wirklich freigeben?'))break;
   savePublicSettings(opts);
-  try{await publishPublic(false);closeModal();alert('Öffentliche Ansicht aktualisiert.');}
+  try{await publishPublic(false);closeModal();alert('Leseransicht aktualisiert.');}
   catch(e){alert('Veröffentlichen fehlgeschlagen: '+e.message);}
   break;
  }}});

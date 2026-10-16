@@ -1,0 +1,23 @@
+FANTASTIX RLS CHECK (nach Ausführen von 04_LESER_LOGIN_UND_ZUSAGEN.sql)
+====================================================================
+Die folgende Abfrage im SQL Editor zeigt GRANTS; sie ersetzt keinen RLS-Test.
+
+SELECT
+  has_table_privilege('anon','public.fantastix_public','SELECT') AS anon_public_select, -- false
+  has_table_privilege('anon','public.fantastix_reader_votes','SELECT') AS anon_votes_select, -- false
+  has_table_privilege('authenticated','public.fantastix_reader_votes','SELECT') AS auth_votes_select; -- true nur unter RLS
+
+SELECT relname, relrowsecurity FROM pg_class WHERE relnamespace='public'::regnamespace
+  AND relname IN ('fantastix_reader_profiles','fantastix_reader_votes','fantastix_private','fantastix_public');
+-- Alle: true
+
+Sicherheit mit ECHTEN Browserkonten überprüfen:
+1. Ohne Login liest niemand die Mitglieder/Abwesenheitsgründe.
+2. Unverknüpfter Leser kann keinen public-Datensatz / keine Stimme lesen.
+3. Zugeordneter Leser sieht nur veröffentlichte Daten, darf nicht updaten.
+4. Zugeordneter Leser kann nur für sein eigenes Mitglied vor Frist abstimmen.
+5. Das Admin-Konto kann Zuordnungen und offizielle Anwesenheiten ändern.
+
+WICHTIG: In Supabase können SQL-Editor-Abfragen als besonders berechtigter
+Benutzer laufen und RLS umgehen. Für echte Tests einen Browser mit dem
+Publishable Key und je einem eigenen Login verwenden.

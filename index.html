@@ -32,6 +32,16 @@ html, body { touch-action: pan-x pan-y; }
 .cash-hero .button{background:#d32a41}.cash-setup h2{margin:0 0 4px}.cash-setup .hint{margin:0}.cash-inline{padding:12px 0 1px;color:var(--muted);font-size:13px}.cash-inline strong{color:var(--ink)}
 .cash-amount{font-size:15px;white-space:nowrap;font-variant-numeric:tabular-nums}.cash-amount.positive{color:#087647}.cash-amount.negative{color:#bb2635}
 @media(max-width:390px){.cash-hero{padding:17px}.cash-balance{font-size:34px}.cash-hero-actions button{font-size:13px}.cash-setup{align-items:flex-start}.cash-inline{flex-wrap:wrap}}
+
+/* FantastiX v3.6 – Dashboard, Abstimmungsverwaltung */
+.dashboard-v36 .metric{min-height:142px;min-width:0;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.leader-list{font-size:clamp(14px,2.5vw,19px);line-height:1.2;font-weight:800;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere;margin:4px 0}
+.balance-tile{font-size:clamp(18px,3vw,26px)!important;overflow-wrap:anywhere}
+.reader-admin-row{border-bottom:1px solid var(--border);padding:13px 0;display:grid;grid-template-columns:1fr;gap:8px}
+.reader-admin-row small{display:block;color:var(--muted);margin-top:3px;font-weight:450}
+.reader-admin-row select{width:100%}
+.vote-origin{margin:9px 0 4px;padding:7px 10px;background:#fff1f2;border-radius:10px;color:#831b2b;font-weight:500}
+@media(max-width:420px){.dashboard-v36 .metric{padding:12px;min-height:148px}.leader-list{font-size:15px}}
 </style><script id="fantastix-zoom-lock">
 // Verhindert versehentliches Vergrößern in der mobilen App; normales Scrollen bleibt möglich.
 for (const eventName of ['gesturestart', 'gesturechange']) {
@@ -40,4 +50,4 @@ for (const eventName of ['gesturestart', 'gesturechange']) {
 document.addEventListener('touchmove', event => {
   if (event.touches.length > 1) event.preventDefault();
 }, {passive:false});
-</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.5.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.5.0"></script></body></html>
+</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.6.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.6.0"></script></body></html>

@@ -36,8 +36,53 @@ html, body { touch-action: pan-x pan-y; }
 .readonly-header{display:flex;align-items:center;gap:12px;margin:7px 0 22px}.readonly-header img{width:57px;height:57px;object-fit:contain;border-radius:50%;background:#fff}.readonly-header strong{font-size:20px}.readonly-header small{display:block;color:#666;margin-top:4px}.readonly-badge{margin-left:auto;color:#991b1b;background:#fee2e2;border-radius:100px;padding:7px 10px;font-weight:700;font-size:12px}
 .readonly-nav{position:fixed;bottom:0;left:0;right:0;background:#ffffffed;border-top:1px solid #eee;padding:10px 6px calc(10px + env(safe-area-inset-bottom));z-index:20}.readonly-nav .navinner{display:flex;overflow-x:auto;scrollbar-width:none;max-width:830px;margin:auto}.readonly-nav .navbutton{flex:1 0 auto;min-width:66px;padding:10px 8px;font-size:11px}
 .readonly-shell{max-width:930px;margin:auto;padding:18px 16px 110px}.readonly-footer{font-size:12px;color:#667085;margin-top:30px}
+
+/* FantastiX 3.6 Mitgliederportal */
+[hidden]{display:none!important}
+.readonly-nav:has(#tabs:empty){display:none}
+.readonly-nav{background:rgba(255,255,255,.98);border-top:1px solid #e9e0e1;box-shadow:0 -7px 24px rgba(34,19,23,.08);padding:7px 5px calc(9px + env(safe-area-inset-bottom));}
+.readonly-nav .navinner{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;max-width:720px;overflow:visible}
+.readonly-nav .navbutton{min-width:0;padding:8px 1px 7px;font-size:10.5px;color:#5d5860;gap:4px;font-weight:700;line-height:1.12;border-radius:12px;}
+.readonly-nav .navbutton.active{color:#9e1830;background:#fde9ec;}
+.tab-icon{font-size:21px;font-weight:650;height:24px;display:flex;align-items:center;justify-content:center}
+.readonly-shell{padding-bottom:118px}
+.auth-card{max-width:440px;margin:18px auto}.auth-top{margin-bottom:20px}.auth-toggle{width:100%;margin-top:12px}.auth-card .field{margin:0}
+.dashboard-v36 .metric{min-height:146px;display:flex;flex-direction:column;justify-content:flex-start;gap:6px;overflow:hidden}
+.leader-list{display:flex;flex-direction:column;gap:3px;margin:2px 0;overflow-wrap:anywhere;font-size:16px;font-weight:800;line-height:1.2}
+.balance-tile{font-size:clamp(18px,3vw,26px)!important;overflow-wrap:anywhere}
+.vote-panel{margin:16px 0 4px;padding:14px;background:#fff8f9;border:1px solid #f0d4da;border-radius:16px}
+.vote-panel.compact{margin-top:18px}
+.vote-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.vote-header .chip{white-space:normal;text-align:right;line-height:1.35}
+.vote-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 9px}
+.vote-btn{border:1px solid #ddcdd0;background:white;color:#343034;border-radius:12px;min-height:48px;font-weight:800;font-size:15px}
+.vote-btn.selected.yes{background:#e4f8ed;border-color:#8ecfa8;color:#0c7644}
+.vote-btn.selected.no{background:#ffeaed;border-color:#ea9aaa;color:#ad1c36}
+.vote-btn:disabled{opacity:.75;cursor:not-allowed}
+@media(max-width:390px){.readonly-nav .navbutton{font-size:9.3px}.tab-icon{font-size:19px}.dashboard-v36 .metric{padding:12px;min-height:152px}.leader-list{font-size:15px}}
+
+/* Lesbare Abstimmungs- und Anwesenheitsübersicht für alle freigeschalteten Mitglieder. */
+.meeting-card{overflow:hidden}
+.attendee-block{margin-top:17px;border:1px solid #ebe4e5;border-radius:16px;overflow:hidden;background:#fff}
+.roster-header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;background:#faf7f8;border-bottom:1px solid #eee3e6}
+.roster-header strong{font-size:14px}
+.roster-header small{font-size:12px;color:#6e5b63;font-weight:650}
+.roster-list{padding:0 14px}
+.roster-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid #f2edf0;min-width:0}
+.roster-row:last-child{border-bottom:0}
+.roster-name{font-size:14px;font-weight:680;min-width:0;overflow-wrap:anywhere}
+.roster-right{display:flex;align-items:end;flex-direction:column;gap:4px;flex-shrink:0}
+.roster-row .chip{font-size:11px;letter-spacing:.005em}
+.yes-chip{color:#0e6841!important;background:#dff7e9!important}
+.no-chip{color:#a21d38!important;background:#ffe5ea!important}
+.roster-sub{font-size:10px;color:#736b6c;white-space:nowrap}
+.absence-reason{display:block;color:#6d6870;font-size:12px;font-weight:450;margin-top:5px;line-height:1.45}
+.rsvp-short{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;color:#574b50;font-size:13px;font-weight:650}
+.rsvp-short .smallbtn{margin-left:auto}
+@media(max-width:390px){.roster-list{padding:0 11px}.roster-row{gap:6px}.roster-name{font-size:13px}.roster-row .chip{font-size:10px;padding:5px 7px}.roster-header{padding:10px 11px}}
 </style><script src="./cloud-config.js"></script></head><body><main class="readonly-shell">
-<header class="readonly-header"><img src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><small>Öffentliche Leseansicht</small></div><span class="readonly-badge">Nur lesen</span></header>
-<div id="content"><section class="card"><h2>Lade freigegebene Daten …</h2></section></div>
-<footer class="readonly-footer" id="updated"></footer></main><nav class="readonly-nav"><div class="navinner" id="tabs"></div></nav>
-<script type="module" src="./lesen.js?v=3.5.0"></script></body></html>
+<header class="readonly-header"><img src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><small>Mitgliederportal · v3.6.0</small></div><span class="readonly-badge">Mitglieder</span></header>
+<div id="auth-gate"><section class="card"><h2>Anmeldung wird geladen …</h2></section></div>
+<div id="reader-app" hidden><div id="content"></div><footer class="readonly-footer" id="updated"></footer></div>
+</main><nav class="readonly-nav"><div class="navinner" id="tabs"></div></nav>
+<script type="module" src="./lesen.js?v=3.6.0"></script></body></html>
