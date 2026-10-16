@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.12.1';
+const APP_VERSION = '3.13.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -162,9 +162,8 @@ function homeHTML(){
    <div class="metric"><small>Kontostand</small><div class="value balance-tile">${money(accountBalance())}</div><small>Offene Strafen: ${money(pending)}</small></div>
   </div>
   <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
-   ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p><button class="button" data-action="meeting-new">+ Stammtisch planen</button>'}
+   ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}
   </section>
-  <div class="toolbar"><button class="button" data-action="meeting-new">+ Stammtisch</button></div>
   <section class="card"><h2>Letzte 2 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
   <section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextExcursion()?excursionPeriod(nextExcursion()):'Nicht geplant'}</span></div>
    ${nextExcursion()?`<strong class="excursion-title">${esc(nextExcursion().title)}</strong><p class="muted">Organisatoren: ${esc(excursionOrganizers(nextExcursion()))}</p><button class="ghost" data-page="excursions">Events ansehen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new">+ Event planen</button>`}
@@ -372,7 +371,7 @@ const footer = (label='Speichern')=>`<div class="foot"><button type="button" cla
 function memberForm(id){
  const m=member(id)||{id:'',name:'',memberNumber:null,historicalCount:0,historical2026Count:0,active:true};
  const nextNo=(()=>{let x=1;const used=new Set(data.members.map(memberNo).filter(Boolean));while(used.has(x))x++;return x})();
- modal(id?'Mitglied bearbeiten':'Neues Mitglied',`<form data-form="member"><input type="hidden" name="id" value="${esc(m.id)}"><div class="field"><label for="mname">Name</label><input id="mname" name="name" value="${esc(m.name)}" maxlength="100" autocomplete="off" required></div><div class="field"><label for="mnumber">Mitgliedsnummer</label><input id="mnumber" name="memberNumber" type="number" min="1" step="1" value="${memberNo(m)??(id?'':nextNo)}" placeholder="z. B. 12"></div><div class="field"><label style="display:flex;align-items:center;gap:9px"><input type="checkbox" name="active" ${m.active!==false?'checked':''}>Aktives Mitglied</label></div>${footer()}</form>`);
+ modal(id?'Mitglied bearbeiten':'Neues Mitglied',`<form data-form="member"><input type="hidden" name="id" value="${esc(m.id)}"><div class="field"><label for="mname">Name</label><input id="mname" name="name" value="${esc(m.name)}" maxlength="100" autocomplete="off" required></div><div class="field"><label for="mnumber">Mitgliedsnummer</label><input id="mnumber" name="memberNumber" type="number" min="1" step="1" value="${memberNo(m)??(id?'':nextNo)}" placeholder="z. B. 12"></div><div class="field"><label style="display:flex;align-items:center;gap:9px"><input type="checkbox" name="active" ${m.active!==false?'checked':''}>Aktives Mitglied</label></div>${footer()}${id?`<div class="separator"></div><div class="notice danger-note">Unwiderruflich: Das Mitglied wird aus Cloud, Ranglisten, Teilnahme- und Eventdaten sowie den zugehörigen finanziellen Einträgen entfernt. Die Kassa kann sich ändern. Gespeicherte Backups in Supabase werden bereinigt. Eigene externe Backups bleiben davon unberührt.</div><button type="button" class="danger-btn" style="width:100%;margin-top:12px" data-action="member-delete-confirm" data-id="${esc(m.id)}">Mitglied vollständig entfernen</button>`:''}</form>`);
 }
 function bulk2026Form(){const sorted=[...data.members].sort(byMemberNo);if(!sorted.length)return alert('Bitte zuerst Mitglieder anlegen.');modal('Teilnahmen 2026',`<form data-form="bulk-2026">${sorted.map(m=>`<div class="row field"><label style="flex:1;margin:0" for="baseline-${m.id}">${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</label><input id="baseline-${m.id}" name="baseline-${m.id}" type="number" min="0" step="1" value="${n(m.historical2026Count)}" required style="max-width:115px" aria-label="2026-Teilnahmen ${esc(m.name)}"></div>`).join('')}${footer('Speichern')}</form>`);}
 function saveBulk2026(fd){const updates=[];for(const m of data.members){const x=Number(fd.get(`baseline-${m.id}`));if(!Number.isSafeInteger(x)||x<0)return alert(`Ungültiger 2026-Startwert für ${m.name}.`);if(x>n(m.historicalCount))return alert(`Der 2026-Startwert von ${m.name} darf nicht größer als der Gesamt-Startwert (${n(m.historicalCount)}) sein. Bitte zuerst das Mitglied bearbeiten.`);updates.push([m,x]);}for(const [m,x] of updates)m.historical2026Count=x;closeModal();persist();}
@@ -479,6 +478,44 @@ async function reloadReaderAdminData(){
  if(error)throw error;
  readerProfiles=rows||[];
 }
+async function permanentlyDeleteMember(id){
+ const m=member(id);
+ if(!m)return alert('Mitglied nicht gefunden.');
+ if(!cloudSecurityReady()||cloudDirty)return alert('Bitte zuerst die Cloud vollständig synchronisieren. Die Löschung ist nur online als Admin möglich.');
+ const number=memberNo(m);
+ if(number===null)return alert('Für die endgültige Löschung muss das Mitglied eine gültige Mitgliedsnummer haben.');
+ if(!confirm(`Mitglied Nr. ${number} · ${m.name} endgültig aus FantastiX entfernen?\n\nAnwesenheiten, Event-Zusagen, Strafen, Zahlungen und anteilige Monatsbuchungen werden bereinigt. Der Kontostand kann sich ändern. Auch vorhandene Supabase-Backups werden bereinigt. Externe JSON-Dateien können nicht automatisch gelöscht werden.\n\nDiese Aktion ist nicht rückgängig zu machen.`))return;
+ const typed=prompt(`Zum Bestätigen bitte genau die Mitgliedsnummer ${number} eingeben:`);
+ if(typed!==String(number))return alert('Abgebrochen. Mitgliedsnummer stimmt nicht überein.');
+ const typedWord=prompt('Zum endgültigen Löschen das Wort LÖSCHEN eingeben:');
+ if(typedWord!=='LÖSCHEN')return alert('Abgebrochen. Keine Daten gelöscht.');
+ try{
+  clearTimeout(syncTimer);
+  const {data:result,error}=await cloudClient.rpc('fantastix_admin_delete_member',{
+   p_member_id:m.id,p_member_number:number,p_expected_revision:cloudRevision,p_confirmation:'ENDGUELTIG LOESCHEN'
+  });
+  if(error)throw error;
+  // Fotos werden über die Storage-API gelöscht, nicht durch SQL-Manipulation der Storage-Metadaten.
+  const owners=Array.isArray(result?.photo_user_ids)?result.photo_user_ids:[];
+  let photoError='';
+  for(const ownerId of owners){
+   const res=await cloudClient.storage.from('fantastix-avatars').remove([ownerId+'/avatar.jpg']);
+   if(res.error)photoError+=' '+res.error.message;
+  }
+  // Bereits gespeicherte alte Stände auf diesem Gerät aus IndexedDB entfernen.
+  try{await snapshotWriteQueue;await new Promise((resolve,reject)=>{const req=indexedDB.deleteDatabase(SNAP_DB);req.onsuccess=resolve;req.onerror=()=>reject(req.error);req.onblocked=()=>reject(Error('Lokale Sicherungen sind gesperrt.'));});}
+  catch(e){console.warn('Lokale Sicherung konnte nicht gelöscht werden:',e);}
+  const remote=await readRemote();adoptCloud(remote);
+  avatarUrls={};await loadMemberAvatars(true).catch(console.warn);
+  await reloadReaderAdminData().catch(console.warn);
+  // Öffentlichen Kassenstand und Monatsbuchungen aus den bereinigten Daten neu berechnen.
+  let publicationError='';
+  if(publicPublished){try{await publishPublic(false);}catch(e){publicationError=e.message||String(e);}}
+  closeModal();page='members';render();
+  alert('Mitglied Nr. '+number+' wurde aus dem aktuellen Cloud-Bestand entfernt.'+(photoError?'\nAchtung, Foto-Datei konnte nicht gelöscht werden:'+photoError:'')+(publicationError?'\nLeser-Kassenstand noch nicht neu veröffentlicht: '+publicationError:''));
+ }catch(e){alert('Mitglied NICHT gelöscht oder Löschung nicht bestätigt: '+(e.message||String(e))+'\nBitte Cloud-Datenstand prüfen.');}
+}
+
 async function readerAccess(){
  if(!cloudReady){alert('Bitte zuerst als Administrator mit der Cloud verbinden.');return;}
  try{await reloadReaderAdminData();}
@@ -529,7 +566,7 @@ async function saveNotice(fd){
 }
 async function manageNotices(){
  try{const rows=await noticesAdminList();
- modal('Nachrichten verwalten',`<div class="stack">${rows.length?rows.map(r=>`<div class="item"><div class="details"><strong>${esc(r.title)}</strong><small>${esc(r.message)}</small><small style="display:block">${new Date(r.created_at).toLocaleString('de-AT')} · ${r.is_active?'Aktiv':'Zurückgezogen'}</small></div>${r.is_active?`<button class="smallbtn" data-action="notice-revoke" data-id="${r.id}">Zurückziehen</button>`:''}</div>`).join(''):'<p class="muted">Noch keine Nachrichten.</p>'}</div>`);
+ modal('Nachrichten verwalten',`<div class="stack">${rows.length?rows.map(r=>`<div class="item"><div class="details"><strong>${esc(r.title)}</strong><small>${esc(r.message)}</small><small style="display:block">Von: ${esc(r.sender_name||'Administrator')}</small><small style="display:block">${new Date(r.created_at).toLocaleString('de-AT')} · ${r.is_active?'Aktiv':'Zurückgezogen'}</small></div>${r.is_active?`<button class="smallbtn" data-action="notice-revoke" data-id="${r.id}">Zurückziehen</button>`:''}</div>`).join(''):'<p class="muted">Noch keine Nachrichten.</p>'}</div>`);
  }catch(e){alert('Nachrichten konnten nicht geladen werden: '+(e.message||String(e)));}
 }
 async function revokeNotice(id){
@@ -735,7 +772,7 @@ document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
  const action=el.dataset.action,id=el.dataset.id;if(el.dataset.page){page=el.dataset.page;render();window.scrollTo({top:0,behavior:'instant'});return;}
- switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
+ switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
  case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Event endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();
  if(!navigator.onLine||!cloudUser||!cloudReady)alert('Lokal gelöscht. Im Mitgliederportal verschwindet der Stammtisch, sobald dein Gerät wieder online ist und der neue Cloud-Stand synchronisiert wurde.');

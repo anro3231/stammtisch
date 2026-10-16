@@ -1,11 +1,11 @@
-FantastiX v3.12.1 – GitHub Pages + Supabase
+FantastiX 3.13.0 | GitHub Pages Update
 
-Änderungen:
-- In der Rangliste (Admin und Mitgliederportal) ein klarer Jahresfilter: Ewig und 2026, 2027 usw. automatisch ab Jahresbeginn.
-- Im Admin-Mitgliederbildschirm die Schaltfläche „Teilnahmen 2026“ entfernt. Die bisherigen Startwerte bleiben in den Daten erhalten. Die Mitgliederübersicht zeigt automatisch das aktuelle Jahr.
-- Auf dem Admin-Dashboard die Buttons „Kalender öffnen“ und „+ Mitglied“ entfernt. Kalender und Mitgliederverwaltung bleiben in der Navigation erreichbar.
-- Push-Fix: Service Worker muss vor subscribe() aktiviert sein. Optionaler Offline-Cache kann seine Installation nicht mehr durch eine fehlende Datei verhindern.
+Dateien dieses Ordners in das bestehende GitHub-Repository hochladen.
+WICHTIG: Deine vorhandene cloud-config.js und push-config.js beibehalten.
+ZUERST SQL-Datei 15_MITGLIED_ENTFERNEN_UND_POPUP_NACHRICHTEN.sql im bestehenden Supabase SQL Editor ausführen.
 
-Nur Dateien aus diesem ZIP ins bestehende GitHub-Repository kopieren.
-Die vorhandene cloud-config.js beibehalten. Kein zusätzliches Supabase-SQL notwendig.
-Falls Push weiterhin nicht funktioniert: Anleitung PUSH_UND_UPDATE.txt beachten.
+Neues: Admin-Mitgliedlöschung über Mitglieder -> Bearbeiten.
++ Stammtisch vom Admin-Dashboard entfernt; im Stammtisch-Menü weiterhin vorhanden.
+Pop-ups von Mitgliedern im Lesemodus -> Mitglieder. Absender wird serverseitig ermittelt.
+
+Siehe ANLEITUNG_3_13.txt im Supabase-Paket.

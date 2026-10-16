@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.12.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.13.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -193,7 +193,7 @@ async function deleteMyBirthday(){
 }
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
- return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
+ return `${heading('Mitglieder')}<section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section><section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="item">${avatarFor(m.id)}<div class="details"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small></div></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
 }
 function cash(){
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
@@ -209,8 +209,27 @@ function showNextNotice(){
  const v=noticeQueue.shift();
  if(!v)return;
  dlg.dataset.noticeId=String(v.id);
- dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${esc(v.title)}</h2></div><p class="notice-popup-body">${esc(v.message)}</p><button class="button notice-ack" type="button" id="notice-ack">OK, verstanden</button></div>`;
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${esc(v.title)}</h2></div><p class="muted tiny">Von: ${esc(v.sender_name||'Administrator')}</p><p class="notice-popup-body">${esc(v.message)}</p><button class="button notice-ack" type="button" id="notice-ack">OK, verstanden</button></div>`;
  dlg.showModal();
+}
+function openMemberNotice(){
+ if(!user||!profile?.member_id)return alert('Bitte zuerst anmelden und einem Mitglied zuordnen lassen.');
+ const dlg=$('#member-notice-dialog');
+ dlg.innerHTML=`<form id="member-notice-form" class="modalbody"><div class="modalhead"><h2>Pop-up-Nachricht senden</h2><button type="button" class="ghost" id="member-notice-close">Schließen</button></div><p class="hint">Absender: ${esc(memberName(profile.member_id))}. Für alle freigeschalteten Mitglieder sichtbar.</p><div class="field"><label>Überschrift</label><input name="title" maxlength="90" required></div><div class="field"><label>Nachricht</label><textarea name="message" rows="5" maxlength="800" required></textarea></div><button class="button" type="submit">An alle senden</button></form>`;
+ dlg.showModal();
+}
+async function sendMemberNotice(form){
+ if(busy)return;
+ const fd=new FormData(form),title=String(fd.get('title')||'').trim(),message=String(fd.get('message')||'').trim();
+ if(title.length<1||title.length>90||message.length<1||message.length>800)return alert('Titel und Text ausfüllen.');
+ if(!confirm('Diese Pop-up-Nachricht wirklich an alle freigeschalteten Mitglieder senden?'))return;
+ busy=true;
+ try{
+  const {error}=await cloud.rpc('fantastix_member_notice_create',{p_title:title,p_message:message});
+  if(error)throw error;
+  $('#member-notice-dialog').close();alert('Nachricht verschickt. Dein Name wird als Absender angezeigt.');
+ }catch(e){alert('Versand fehlgeschlagen: '+(e.message||String(e)));}
+ finally{busy=false;}
 }
 function queueNewNotices(){
  const dlg=$('#notice-dialog');const shown=dlg?.open?Number(dlg.dataset.noticeId):null;
@@ -433,6 +452,7 @@ document.addEventListener('submit',e=>{
  if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
  if(e.target.id==='birthday-form'){e.preventDefault();saveMyBirthday(e.target);}
+ if(e.target.id==='member-notice-form'){e.preventDefault();sendMemberNotice(e.target);}
  if(e.target.id==='absence-reason-form'){
    e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
    if(!reason)return alert('Bitte einen Abwesenheitsgrund eintragen.');
@@ -447,6 +467,8 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
  if(e.target.closest('#birthday-remove')){deleteMyBirthday();return;}
  if(e.target.closest('#notice-ack')){acknowledgeNotice();return;}
+ if(e.target.closest('#member-notice-open')){openMemberNotice();return;}
+ if(e.target.closest('#member-notice-close')){$('#member-notice-dialog').close();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
  const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
  const nav=e.target.closest('[data-tab]');if(nav){
