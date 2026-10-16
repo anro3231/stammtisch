@@ -1,3 +1,3 @@
-FantastiX v3.9.0 – GitHub Pages + Supabase.
-Vor der Installation: ANLEITUNG_3_9.txt lesen.
-Nachrichtensystem: NUR EINMALIGES POP-UP IM LESERPORTAL, KEIN NACHRICHTEN-MENÜ.
+FantastiX 3.10.0 – Ausflugsabstimmung im Admin-Modus
+Lies ANLEITUNG_3_10.txt im Supabase-Update- oder Komplettpaket.
+Unbedingt bisherige cloud-config.js im GitHub-Repository behalten.

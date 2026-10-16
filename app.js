@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.10.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -79,7 +79,7 @@ function excursionLastDate(x){return x.endDate||x.date||'';}
 function nextExcursion(){const pending=(data.excursions||[]).filter(x=>!x.completed&&(!x.date||excursionLastDate(x)>=today()));return [...pending].sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 let excursionVotes=[],excursionVoteWarning='';
 function excursionVoteCounts(id){const selected=excursionVotes.filter(v=>v.excursion_id===id);return {yes:selected.filter(v=>v.status==='yes').length,no:selected.filter(v=>v.status==='no').length};}
-async function reloadExcursionVotes(){if(!cloudReady||!cloudClient||!cloudUser)return;const {data:rows,error}=await cloudClient.rpc('fantastix_excursion_votes_admin');if(error)throw error;excursionVotes=rows||[];excursionVoteWarning='';if(page==='excursions')render();}
+async function reloadExcursionVotes(){if(!cloudReady||!cloudClient||!cloudUser)return;const {data:rows,error}=await cloudClient.rpc('fantastix_excursion_votes_admin_v2');if(error)throw error;excursionVotes=rows||[];excursionVoteWarning='';if(page==='excursions')render();}
 
 /* Kassa: Zahlungen vor dem Upgrade sind über die Kontostand-Anfangsbuchung abgedeckt.
    Künftige Strafzahlungen werden live aus payments berechnet; Löschungen wirken sofort.
@@ -185,7 +185,22 @@ function excursionsHTML(){
 function excursionForm(id){
  const x=(data.excursions||[]).find(v=>v.id===id)||{id:'',title:'',date:'',endDate:'',location:'',notes:'',organizerIds:[],organizerOther:'',completed:false};
  const already=excursionVotes.filter(v=>v.excursion_id===x.id);
- const voteHTML=id?`<div class="separator"></div><h3>Zusagen · ${already.filter(v=>v.status==='yes').length} da / ${already.filter(v=>v.status==='no').length} nicht da</h3>${excursionVoteWarning?`<p class="hint">${esc(excursionVoteWarning)}</p>`:''}<div class="list">${[...data.members].filter(m=>m.active!==false||already.some(v=>v.member_id===m.id)).sort(byMemberNo).map(m=>{const v=already.find(v=>v.member_id===m.id);return `<div class="item"><div class="details"><strong>${esc(m.name)}</strong></div><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'red':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span></div>`;}).join('')}</div>`:'';
+ const ownMemberId=readerProfiles.find(p=>p.user_id===cloudUser?.id)?.member_id;
+ const countLabel=()=>`${already.filter(v=>v.status==='yes').length} da / ${already.filter(v=>v.status==='no').length} nicht da`;
+ const voteHTML=id?`<div class="separator"></div><h3>Zusagen · <span id="excursion-vote-count">${countLabel()}</span></h3>
+ <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Ausflug. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
+ ${!ownMemberId?'<p class="hint">Tipp: Dein eigenes Admin-Konto kannst du unter Mehr → Benutzer verwalten einem Mitglied zuordnen.</p>':''}
+ ${!cloudReady?'<p class="notice warning">Zum Abstimmen bitte zuerst die Admin-Cloud verbinden.</p>':''}
+ ${excursionVoteWarning?`<p class="notice warning">${esc(excursionVoteWarning)}</p>`:''}
+ <div class="list">${[...data.members].filter(m=>m.active!==false||already.some(v=>v.member_id===m.id)).sort((a,b)=>Number(mineFirst(b,ownMemberId))-Number(mineFirst(a,ownMemberId))||byMemberNo(a,b)).map(m=>{
+  const v=already.find(v=>v.member_id===m.id),isMine=ownMemberId===m.id;
+  return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
+   <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
+   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small></div>
+   <div class="excursion-admin-vote-buttons" role="group" aria-label="Ausflugszusage für ${esc(m.name)}">
+    ${[['yes','✓ Da'],['no','× Nicht da'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
+   </div></div>`;
+ }).join('')}</div>`:'';
  modal(id?'Ausflug bearbeiten':'Ausflug planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
  <div class="field"><label>Bezeichnung *</label><input name="title" maxlength="120" value="${esc(x.title)}" placeholder="z. B. Hüttenwochenende" required></div>
  <div class="field"><label>Beginn (optional)</label><input type="date" name="date" value="${esc(x.date||'')}"></div>
@@ -196,6 +211,34 @@ function excursionForm(id){
  <div class="field"><label>Weitere Organisatoren (optional)</label><input name="organizerOther" maxlength="200" value="${esc(x.organizerOther||'')}" placeholder="Namen, durch Komma getrennt"></div>
  <div class="field"><label class="organizer-option"><input type="checkbox" name="completed" ${x.completed?'checked':''}><span>Ausflug abgeschlossen</span></label></div>
  ${footer('Ausflug speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="excursion-delete" data-id="${esc(x.id)}">Ausflug löschen</button>`:''}</form>${voteHTML}`);
+}
+function mineFirst(m,memberId){return Boolean(memberId&&m.id===memberId);}
+function updateExcursionVoteControls(id){
+ const dialog=$('#dialog');if(!dialog?.open)return;
+ const form=dialog.querySelector('form[data-form="excursion"]');if(!form||form.elements.id.value!==id)return;
+ const selected=excursionVotes.filter(v=>v.excursion_id===id);
+ const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} da / ${selected.filter(v=>v.status==='no').length} nicht da`;
+ for(const row of dialog.querySelectorAll('[data-excursion-row]')){
+  const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
+  if(label)label.textContent=(v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');
+  for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
+   const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
+   button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));
+  }
+ }
+}
+async function adminExcursionVote(excursionId,memberId,status){
+ if(!cloudReady||!cloudClient||!cloudUser)return alert('Bitte zuerst als Administrator mit der Cloud verbinden.');
+ if(excursionVoteWarning)return alert('Ausflugsabstimmungen sind nicht verfügbar: '+excursionVoteWarning);
+ if(!['yes','no','clear'].includes(status)||!member(memberId)||!(data.excursions||[]).some(x=>x.id===excursionId))return;
+ const dialog=$('#dialog'),buttons=[...(dialog?.querySelectorAll('[data-action="excursion-admin-vote"]')||[])];
+ buttons.forEach(b=>b.disabled=true);
+ try{
+  const {error}=await cloudClient.rpc('fantastix_excursion_admin_vote',{p_excursion_id:excursionId,p_member_id:memberId,p_status:status});
+  if(error)throw error;
+  await reloadExcursionVotes();updateExcursionVoteControls(excursionId);
+ }catch(e){alert('Ausflugszusage konnte nicht gespeichert werden: '+(e.message||String(e))+'\nBitte Supabase-SQL-Update 09 prüfen.');}
+ finally{buttons.forEach(b=>b.disabled=!cloudReady||!!excursionVoteWarning);}
 }
 function saveExcursion(fd){
  const id=String(fd.get('id')||''),title=String(fd.get('title')||'').trim(),date=String(fd.get('date')||''),endDate=String(fd.get('endDate')||''),location=String(fd.get('location')||'').trim(),notes=String(fd.get('notes')||'').trim(),organizerOther=String(fd.get('organizerOther')||'').trim();
@@ -612,7 +655,7 @@ async function unpublishPublic(){
 /* Interaktionen */
 document.addEventListener('click',async ev=>{const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
  const action=el.dataset.action,id=el.dataset.id;if(el.dataset.page){page=el.dataset.page;render();window.scrollTo({top:0,behavior:'instant'});return;}
- switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
+ switch(action){case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
  case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Ausflug endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();}break;}
  case'payment-delete':{const p=data.payments.find(x=>x.id===id);if(p&&confirm('Diese Zahlung stornieren? Der Betrag wird wieder offen.')){const fid=p.fineId;data.payments=data.payments.filter(x=>x.id!==id);closeModal();persist();fineView(fid);}break;}

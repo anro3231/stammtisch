@@ -1,0 +1,56 @@
+FANTASTIX 3.10.0 – AUSFLÜGE: ADMIN-ABSTIMMUNG UND KORREKTUR
+============================================================
+
+WAS IST NEU?
+- Admin kann im ADMIN-MODUS für jeden Ausflug selbst für das eigene verknüpfte Mitglied abstimmen.
+- Admin kann die Zusage jedes anderen Mitglieds im selben Ausflugsfenster direkt ändern.
+- Drei Optionen: "Da", "Nicht da", "Offen". "Offen" entfernt die bisherige Stimme.
+- Bei einer Korrektur für ein anderes Mitglied kann dieses die Antwort zunächst nicht selbst wieder überschreiben.
+  Wenn du auf "Offen" stellst, kann das Mitglied wieder selbst wählen.
+- Korrigiert der Admin seine EIGENE Stimme, bleibt diese für ihn auch im Leserportal änderbar.
+- Ausflugsstimmen beeinflussen weiterhin keine Stammtisch-Rangliste und keine Strafen.
+- Profilfoto-Upload bleibt verfügbar: LESERMODUS -> Mitglieder -> Mein Profilfoto -> Foto wählen.
+  Die Upload-Schaltfläche befindet sich NICHT im Admin-Modus.
+
+SO INSTALLIEREN
+1. Bestehende FantastiX-Daten im Admin-Modus unter Mehr als JSON sichern.
+2. In Supabase -> SQL Editor nur die neue Datei
+   09_AUSFLUG_ADMIN_STIMMEN.sql ausführen (einmalig, nach SQL 08 der Version 3.9).
+   Nicht das alte Grundschema neu ausführen. Die Migration erhält bestehende Abstimmungen.
+3. Aus FantastiX_v3_10_GitHub_Pages.zip die Dateien in GitHub `anro3231/andi`
+   hochladen (vorhandene App-Dateien ersetzen). Die bisherige cloud-config.js
+   BEHALTEN – sie ist nicht im GitHub-Pages-Paket enthalten.
+4. https://anro3231.github.io/andi/aktualisieren.html aufrufen, dann
+   https://anro3231.github.io/andi/ und Version 3.10.0 prüfen.
+5. In Admin-App -> Mehr -> Cloud anmelden/verbinden.
+6. Admin-App -> Ausflüge -> Ausflug öffnen -> unter dem Formular bei
+   "Zusagen" die Buttons pro Mitglied verwenden. Dein eigenes Mitglied
+   ist mit "Ich" markiert, wenn dein Admin-Konto zugeordnet ist.
+7. Aus dem Mitgliederportal mit einem anderen Testkonto prüfen, dass
+   Admin-Korrekturen sichtbar sind und nicht überschrieben werden können.
+
+EIGENES ADMIN-KONTO EINEM MITGLIED ZUORDNEN
+- Admin-App -> Mehr -> Benutzer verwalten: Admin-Konto mit dem
+  FantastiX-Mitglied "Andi", Nummer 8, verknüpfen.
+- Diese Verknüpfung ist für den "Ich"-Hinweis nötig. Selbst wenn die
+  Verknüpfung noch fehlt, kann der Admin jeden Mitgliedseintrag setzen.
+
+PROFILFOTO
+- https://anro3231.github.io/andi/lesen.html öffnen.
+- Anmelden und auf "Mitglieder" tippen.
+- Ganz oben "Mein Profilfoto" -> "Foto wählen" antippen.
+- Freigeschaltete Mitgliedszuordnung und SQL-Update 08 sowie der private
+  Supabase Storage-Bucket "fantastix-avatars" sind erforderlich.
+- Auf iPhone ggf. "Fotomediathek" oder "Foto aufnehmen" auswählen.
+
+SICHERHEIT UND TESTGRENZEN
+- Alle Änderungen erfolgen über Supabase-RPC-Funktionen. Nur die in
+  `fantastix_admin_users` hinterlegten Admins dürfen Korrekturen schreiben.
+- Der neue Admin-RPC hat KEIN Stichtagslimit; Korrekturen sind auch für
+  abgeschlossene Ausflüge möglich. Mitglieder dürfen gesperrte Stimmen
+  nicht überschreiben. "Offen" hebt eine Admin-Korrektur auf.
+- Es wurden mobile simulierte Browser- und JS-Logiktests durchgeführt.
+- Gegen DEINE echte Supabase-Datenbank wurde das SQL noch nicht getestet.
+  Teste zuerst mit einem Testausflug und einem zweiten Mitgliedskonto.
+- Cloud-Konfiguration darf im Browser NUR einen öffentlichen Supabase-
+  Publishable/anon-Key enthalten, niemals einen Service-Role-/Secret-Key.

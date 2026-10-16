@@ -55,7 +55,18 @@ html, body { touch-action: pan-x pan-y; }
 @media(max-width:440px){.organizer-grid{grid-template-columns:1fr}.navinner .navbutton{font-size:9px;padding-left:0;padding-right:0}.navinner .navbutton svg{width:19px;height:19px}.readonly-nav .navbutton{font-size:9px!important;min-width:0}}
 
 .avatar-photo{object-fit:cover;border:1px solid #eee;}
-</style><script id="fantastix-zoom-lock">
+/* FantastiX 3.10: Direkte Admin-Korrektur bei Ausflügen */
+ .excursion-vote-admin-row{align-items:flex-start;flex-wrap:wrap;gap:9px;padding:14px 0}
+ .excursion-vote-admin-row .details{min-width:110px}
+ .excursion-vote-admin-row .details .chip{padding:3px 7px;font-size:10px}
+ .excursion-admin-vote-buttons{display:flex;flex-wrap:wrap;gap:5px;flex:0 0 auto}
+ .excursion-admin-choice{border:1px solid #e6d9dd;background:#fff;color:#6d6268;padding:8px 9px;border-radius:9px;font-size:12px;font-weight:750;min-height:35px}
+ .excursion-admin-choice.is-selected{background:#aa2037;color:#fff;border-color:#aa2037}
+ .excursion-admin-choice[data-status="no"].is-selected{background:#34343b;border-color:#34343b}
+ .excursion-admin-choice[data-status="clear"].is-selected{background:#f0eef0;border-color:#d4cfd1;color:#4e4b50}
+ .excursion-admin-choice:disabled{opacity:.5;cursor:wait}
+ @media(max-width:390px){.excursion-vote-admin-row{display:block}.excursion-admin-vote-buttons{margin-top:9px}.excursion-admin-choice{flex:1}}
+ </style><script id="fantastix-zoom-lock">
 // Verhindert versehentliches Vergrößern in der mobilen App; normales Scrollen bleibt möglich.
 for (const eventName of ['gesturestart', 'gesturechange']) {
   document.addEventListener(eventName, event => event.preventDefault(), {passive:false});
@@ -63,4 +74,4 @@ for (const eventName of ['gesturestart', 'gesturechange']) {
 document.addEventListener('touchmove', event => {
   if (event.touches.length > 1) event.preventDefault();
 }, {passive:false});
-</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.9.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.9.0"></script></body></html>
+</script></head><body><main class="shell" id="app"><div class="startup-brand"><strong>FantastiX</strong><span class="version-tag">Version 3.10.0</span></div></main><nav class="fixednav" aria-label="Navigation"><div class="navinner" id="nav"></div></nav><dialog id="dialog" aria-modal="true"></dialog><script src="./cloud-config.js"></script><script type="module" src="./app.js?v=3.10.0"></script></body></html>
