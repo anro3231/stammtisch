@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.7.0';
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -109,8 +109,7 @@ function cashHistory(){
 }
 function finePaid(id){return data.payments.filter(p=>p.fineId===id).reduce((s,p)=>s+n(p.amountCents),0);}
 function fineOpen(f){return Math.max(0,n(f.amountCents)-finePaid(f.id));}
-let readerProfiles = [], readerVotes = [];
-function voteFor(meetingId,memberId){return readerVotes.find(v=>v.meeting_id===meetingId&&v.member_id===memberId)||null;}
+let readerProfiles = [];
 function effectiveAttendance(m,id){const own=m.attendance?.[id];return own&&['present','absent'].includes(own.status)?own:null;}
 function stats(id,year){const meetings=data.meetings.filter(m=>doneMeeting(m)&&(!year||yearOf(m.date)===String(year)));const present=meetings.filter(m=>effectiveAttendance(m,id)?.status==='present').length;const eligible=meetings.filter(m=>!!effectiveAttendance(m,id)).length;return {present,eligible,pct:eligible?Math.round(100*present/eligible):0};} 
 function leaders(year){const rows=rankRows(year);return rows.length&&rows[0].count>0?rows.filter(m=>m.count===rows[0].count):[];}
@@ -181,7 +180,7 @@ function settingsHTML(){
  <div class="stack"><button class="button" data-action="cloud-setup">${cloudUser?'Cloud & Freigaben':'Als Administrator anmelden'}</button>
  ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
- <section class="card"><h2>Abstimmung & Leserzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Leser mit Mitgliedern verknüpfen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineDays()} Tag(e)</button></div></section>
+ <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineDays()} Tag(e)</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
 }
@@ -208,7 +207,7 @@ function meetingForm(id){
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const readerVote=voteFor(m.id,person.id);const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${readerVote?`<div class="hint vote-origin">Mitglied hat abgestimmt: <b>${readerVote.status==='present'?'Da':'Nicht da'}</b>${entry.status?' · Admin-Entscheidung gilt':''}</div>`:''}${absenceFields(person.id,entry,linkedFine)}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Da</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Fehlt</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
 }
 function fineForm(){
@@ -245,10 +244,16 @@ function saveMeeting(fd){
  const attendance={},fineChanges=[];
  for(const m of members){
    const status=String(fd.get(`status-${m.id}`)||'');
-   if(status==='present'){attendance[m.id]={status:'present'};}
+   if(status==='present'){
+     const prev=previousMeeting?.attendance?.[m.id];
+     attendance[m.id]=prev?.status==='present'?prev:{status:'present',source:'admin',updatedAt:new Date().toISOString()};
+   }
    if(status==='absent'){
      const reason=String(fd.get(`reason-${m.id}`)||'').trim(),note=String(fd.get(`note-${m.id}`)||'').trim();
-     attendance[m.id]={status:'absent',reason,note};
+     const prev=previousMeeting?.attendance?.[m.id];
+     const changed=prev?.status!=='absent'||String(prev.reason||'')!==reason||String(prev.note||'')!==note;
+     if(changed&&!reason)return alert(`Bitte einen Abwesenheitsgrund für ${m.name} eingeben.`);
+     attendance[m.id]=changed?{status:'absent',reason,note,source:'admin',updatedAt:new Date().toISOString()}:prev;
      const rawFine=String(fd.get(`fine-${m.id}`)||'').trim(),amount=rawFine?moneyToCents(rawFine):0;
      if(!Number.isSafeInteger(amount)||amount<0)return alert(`Ungültiger Strafbetrag für ${m.name}.`);
      fineChanges.push({memberId:m.id,amount,reason});
@@ -287,38 +292,33 @@ function savePayment(fd){
 }
 async function reloadReaderAdminData(){
  if(!cloudReady||!cloudUser||!cloudClient)return;
- const [profiles,votes]=await Promise.all([
-  cloudClient.from('fantastix_reader_profiles').select('user_id,email,member_id,registered_at').order('registered_at',{ascending:false}),
-  cloudClient.from('fantastix_reader_votes').select('meeting_id,member_id,user_id,status,updated_at')
- ]);
- if(profiles.error)throw profiles.error;if(votes.error)throw votes.error;
- readerProfiles=profiles.data||[];readerVotes=votes.data||[];
+ const {data:rows,error}=await cloudClient.rpc('fantastix_admin_list_users');
+ if(error)throw error;
+ readerProfiles=rows||[];
 }
 async function readerAccess(){
  if(!cloudReady){alert('Bitte zuerst als Administrator mit der Cloud verbinden.');return;}
  try{await reloadReaderAdminData();}
- catch(e){alert('Leser konnten nicht geladen werden: '+e.message);return;}
- const people=readerProfiles.filter(p=>p.user_id!==cloudUser.id);
- modal('Leser mit Mitgliedern verknüpfen',`<p class="hint">Neue Konten erscheinen nach der Registrierung. Je Mitglied ist ein Leserzugang möglich.</p><form data-form="reader-access">
- ${people.length?people.map(p=>`<div class="reader-admin-row"><div><strong>${esc(p.email||p.user_id)}</strong><small> ${p.member_id?'Verknüpft':'Wartet auf Zuordnung'}</small></div><select name="reader-${esc(p.user_id)}" aria-label="Zuordnung ${esc(p.email)}"><option value="">Nicht zugeordnet</option>${[...data.members].sort(byMemberNo).map(m=>`<option value="${esc(m.id)}" ${p.member_id===m.id?'selected':''}>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</option>`).join('')}</select></div>`).join(''):'<div class="notice">Noch keine Leser registriert.</div>'}
- ${people.length?footer('Verknüpfungen speichern'):'<button class="ghost" type="button" data-action="close">Schließen</button>'}</form>`);
+ catch(e){alert('Benutzer konnten nicht geladen werden: '+e.message);return;}
+ const people=readerProfiles;
+ modal('Benutzer und Mitglieder',`<p class="hint">Alle registrierten Konten, auch Administratoren. Pro Mitglied ist ein Konto möglich.</p><form data-form="reader-access">
+ ${people.length?people.map(p=>`<div class="reader-admin-row"><div><strong>${esc(p.username||p.email||p.user_id)}</strong>${p.is_admin?'<span class="chip" style="margin-left:6px">Admin</span>':''}<small> ${p.member_id?'Verknüpft':'Noch nicht zugeordnet'}</small></div><select name="reader-${esc(p.user_id)}" aria-label="Zuordnung ${esc(p.username||p.email||p.user_id)}"><option value="">Nicht zugeordnet</option>${[...data.members].sort(byMemberNo).map(m=>`<option value="${esc(m.id)}" ${p.member_id===m.id?'selected':''}>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</option>`).join('')}</select></div>`).join(''):'<div class="notice">Noch keine Konten registriert.</div>'}
+ ${people.length?footer('Alle Zuordnungen speichern'):'<button class="ghost" type="button" data-action="close">Schließen</button>'}</form>`);
 }
 async function saveReaderAccess(fd){
  if(!cloudReady)return alert('Cloud-Verbindung erforderlich.');
- const rows=readerProfiles.filter(p=>p.user_id!==cloudUser.id),used=new Set();
- const selections=rows.map(p=>({user_id:p.user_id,member_id:String(fd.get('reader-'+p.user_id)||'')||null}));
- for(const r of selections){if(r.member_id&&!member(r.member_id))return alert('Unbekanntes Mitglied.');if(r.member_id&&used.has(r.member_id))return alert('Ein Mitglied kann nur einem Leser zugeordnet werden.');if(r.member_id)used.add(r.member_id);}
+ const selections=readerProfiles.map(p=>({user_id:p.user_id,member_id:String(fd.get('reader-'+p.user_id)||'')||null}));
+ const used=new Set();
+ for(const r of selections){
+   if(r.member_id&&!member(r.member_id))return alert('Unbekanntes Mitglied.');
+   if(r.member_id&&used.has(r.member_id))return alert('Jedes Mitglied darf nur einem Konto zugeordnet sein.');
+   if(r.member_id)used.add(r.member_id);
+ }
  try{
-  // Erst entfernte Zuordnungen lösen, dann neue setzen: keine transienten UNIQUE-Konflikte.
-  for(const r of selections.filter(r=>r.member_id!==readerProfiles.find(p=>p.user_id===r.user_id)?.member_id)){
-   const old=readerProfiles.find(p=>p.user_id===r.user_id);
-   if(old?.member_id){const {error}=await cloudClient.from('fantastix_reader_profiles').update({member_id:null}).eq('user_id',r.user_id);if(error)throw error;}
-  }
-  for(const r of selections.filter(r=>r.member_id)){
-   const {error}=await cloudClient.from('fantastix_reader_profiles').update({member_id:r.member_id}).eq('user_id',r.user_id);if(error)throw error;
-  }
-  await reloadReaderAdminData();closeModal();alert('Leserzugänge aktualisiert.');
- }catch(e){alert('Zuordnung fehlgeschlagen: '+e.message+' (Bitte Liste neu öffnen und Stand prüfen.)');}
+   const {error}=await cloudClient.rpc('fantastix_admin_set_links',{p_links:selections});
+   if(error)throw error;
+   await reloadReaderAdminData();closeModal();alert('Benutzerzuordnungen gespeichert.');
+ }catch(e){alert('Zuordnung fehlgeschlagen: '+e.message+' (Bitte Liste neu laden.)');}
 }
 function voteSettingsForm(){modal('Abstimmungsfrist',`<form data-form="vote-settings"><div class="field"><label>Tage vor dem Stammtisch</label><input name="days" type="number" min="0" max="14" step="1" value="${voteDeadlineDays()}" required></div><p class="hint">1 = Abstimmung bis 24 Stunden vor der eingetragenen Uhrzeit. 0 = bis zum Beginn. Es gilt die Zeitzone Wien.</p>${footer('Frist speichern')}</form>`);}
 function saveVoteSettings(fd){const days=Number(fd.get('days'));if(!Number.isInteger(days)||days<0||days>14)return alert('Bitte 0 bis 14 Tage eingeben.');data.rsvpCutoffDays=days;closeModal();persist();}
@@ -481,7 +481,7 @@ function queueSync(){
 function publicSnapshot(opts){
  const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
  const members=allowMembers?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)})):[];
- const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'19:00',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:'admin'}:{status:v.status,source:'admin'}]))})):[];
+ const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'19:00',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,source:v.source||'admin'}]))})):[];
  const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
@@ -553,6 +553,8 @@ document.addEventListener('change',async e=>{const t=e.target;if(t?.name==='orga
   alert('Import abgeschlossen. Bei aktiver Cloud-Synchronisierung werden die Änderungen hochgeladen.');
  }catch(err){alert('Import nicht möglich: '+(err.message||String(err)));}
 });
+// Bei neuen Mitgliederstimmen den zentralen Datenstand regelmäßig übernehmen.
+setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser&&!cloudDirty&&!$('#dialog').open&&!cloudBusy&&!cloudSaving)syncCloud(true);},60000);
 window.addEventListener('online',()=>{if(cloudUser)syncCloud()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){postMonthlyContributions();if(cloudUser)syncCloud();}});
 if(ensureCashbook(data)){try{localStorage.setItem(DATA_KEY,JSON.stringify(data));}catch(e){console.warn('Kassa-Migration konnte nicht gesichert werden:',e);}}

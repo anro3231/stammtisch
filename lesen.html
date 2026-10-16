@@ -80,9 +80,12 @@ html, body { touch-action: pan-x pan-y; }
 .rsvp-short{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;color:#574b50;font-size:13px;font-weight:650}
 .rsvp-short .smallbtn{margin-left:auto}
 @media(max-width:390px){.roster-list{padding:0 11px}.roster-row{gap:6px}.roster-name{font-size:13px}.roster-row .chip{font-size:10px;padding:5px 7px}.roster-header{padding:10px 11px}}
+.roster-row .absence-reason{font-size:12px;margin-top:5px;color:#635d62}
+#absence-dialog{border:none;border-radius:20px;max-width:min(520px,calc(100% - 20px));width:100%;box-shadow:0 28px 90px #1118;padding:0}
+#absence-dialog::backdrop{background:#0d0b0c9c}
 </style><script src="./cloud-config.js"></script></head><body><main class="readonly-shell">
-<header class="readonly-header"><img src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><small>Mitgliederportal · v3.6.0</small></div><span class="readonly-badge">Mitglieder</span></header>
+<header class="readonly-header"><img src="./fantastix-logo.png" alt="FantastiX Logo"><div><strong>FantastiX</strong><small>Mitgliederportal · v3.7.0</small></div><span class="readonly-badge">Mitglieder</span></header>
 <div id="auth-gate"><section class="card"><h2>Anmeldung wird geladen …</h2></section></div>
 <div id="reader-app" hidden><div id="content"></div><footer class="readonly-footer" id="updated"></footer></div>
-</main><nav class="readonly-nav"><div class="navinner" id="tabs"></div></nav>
-<script type="module" src="./lesen.js?v=3.6.0"></script></body></html>
+</main><dialog id="absence-dialog" aria-label="Abwesenheitsgrund"></dialog><nav class="readonly-nav"><div class="navinner" id="tabs"></div></nav>
+<script type="module" src="./lesen.js?v=3.7.0"></script></body></html>

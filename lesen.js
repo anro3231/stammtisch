@@ -1,4 +1,4 @@
-/* FantastiX 3.6 · Authentifizierte Leseransicht mit eigener Stammtisch-Abstimmung. */
+/* FantastiX 3.7.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
@@ -11,39 +11,34 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let cloud=null,user=null,profile=null,data=null,votes=[],deadlines=new Map(),tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let cloud=null,user=null,profile=null,data=null,deadlines=new Map(),tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+// Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
+// MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
+// Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
+const USERNAME_RE=/^[a-z][a-z0-9_-]{2,23}$/;
+const usernameEmail=name=>'fx-'+name.toLowerCase()+'@example.com';
+const usernameOrEmail=value=>value.includes('@')?value:usernameEmail(value);
+const displayAccount=()=>profile?.username||((user?.email||'').match(/^fx-([a-z][a-z0-9_-]{2,23})@example\.com$/i)?.[1])||user?.email||'';
 const section=k=>!!data?.sections?.[k];
 const member=id=>data?.members?.find(m=>m.id===id);
 const memberName=id=>member(id)?.name||'Mitglied';
-const voteFor=(meetingId,memberId)=>votes.find(v=>v.meeting_id===meetingId&&v.member_id===memberId);
 function effective(m,id){
- // Verbindliche Anwesenheit: nur die ausdrückliche Eintragung des Administrators.
- // Mitgliederzusagen sind getrennte, vorläufige Informationen und zählen NICHT für Ranglisten.
- const a=m.attendance?.[id];
- return a&&['present','absent'].includes(a.status)?{...a,source:'admin'}:null;
+ const v=m.attendance?.[id];
+ return v&&['present','absent'].includes(v.status)?v:null;
 }
-function readerStatus(m,id){const v=voteFor(m.id,id);return v?{status:v.status,updatedAt:v.updated_at}:null;}
 function memberOrder(){return [...(data?.members||[])].sort((a,b)=>(Number(a.memberNumber)||99999)-(Number(b.memberNumber)||99999)||a.name.localeCompare(b.name,'de'));}
-function rsvpCounts(m){const list=memberOrder().filter(p=>p.active!==false);const values=list.map(p=>readerStatus(m,p.id));return {yes:values.filter(v=>v?.status==='present').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length,total:list.length};}
+function rsvpCounts(m){
+ const values=memberOrder().filter(p=>p.active!==false).map(p=>effective(m,p.id));
+ return {yes:values.filter(v=>v?.status==='present').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length};
+}
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
- return `<div class="attendee-block"><div class="roster-header"><strong>Abstimmungsstand</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
- <div class="roster-list">${memberOrder().filter(p=>p.active!==false).map(p=>{
- const response=readerStatus(m,p.id);const admin=effective(m,p.id);
- return `<div class="roster-row"><span class="roster-name">${esc(p.name)}</span>
- <div class="roster-right"><span class="chip ${!response?'gray':response.status==='present'?'yes-chip':'no-chip'}">${response?response.status==='present'?'✓ Da':'× Nicht da':'Noch offen'}</span>${admin?`<small class="roster-sub">Admin: ${admin.status==='present'?'Da':'Nicht da'}</small>`:''}</div></div>`;
- }).join('')}</div></div>`;
-}
-function actualAttendance(m){
- if(!section('members'))return '';
- const recorded=memberOrder().filter(p=>effective(m,p.id));
- const present=recorded.filter(p=>effective(m,p.id).status==='present').length;
- const absent=recorded.length-present;
- return `<div class="attendee-block"><div class="roster-header"><strong>Tatsächliche Anwesenheit</strong><small>${present} da · ${absent} nicht da</small></div>
- <div class="roster-list">${memberOrder().map(p=>{
- const a=effective(m,p.id);return `<div class="roster-row"><div class="roster-name">${esc(p.name)}${a?.status==='absent'&&section('absences')&&a.reason?`<small class="absence-reason">Grund: ${esc(a.reason)}</small>`:''}${a?.status==='absent'&&section('absences')&&a.note?`<small class="absence-reason">${esc(a.note)}</small>`:''}</div>
- <span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Nicht erfasst':a.status==='present'?'✓ Da':'× Nicht da'}</span></div>`;
+ return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
+ <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
+ const a=effective(m,p.id);
+ return `<div class="roster-row"><div class="roster-name">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</div>
+ <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Da':'× Nicht da'}</span></div></div>`;
  }).join('')}</div></div>`;
 }
 
@@ -55,16 +50,21 @@ function daysUntil(s){const parts=s?.split('-').map(Number),t=today().split('-')
 function renderGate(msg=''){
  $('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#tabs').innerHTML='';
  if(!user){
-  $('#auth-gate').innerHTML=`<section class="card auth-card"><div class="auth-top">${heading('Willkommen bei FantastiX')}<p class="muted">${authMode==='signup'?'Neues Leserkonto erstellen':'Melde dich mit deinem FantastiX-Konto an.'}</p></div>
-   ${msg?`<div class="notice ${msg.includes('fehlgeschlagen')?'warning':''}">${esc(msg)}</div>`:''}
-   <form id="reader-auth-form" class="stack"><div class="field"><label>E-Mail</label><input name="email" type="email" autocomplete="email" required></div>
-   <div class="field"><label>Passwort (mindestens 6 Zeichen)</label><input name="password" type="password" minlength="6" autocomplete="${authMode==='signup'?'new-password':'current-password'}" required></div>
-   <button class="button" type="submit">${authMode==='signup'?'Konto erstellen':'Anmelden'}</button></form>
-   <button class="ghost auth-toggle" type="button" id="auth-mode-toggle">${authMode==='signup'?'Ich habe schon ein Konto':'Noch kein Konto? Jetzt registrieren'}</button>
-   <p class="hint">Nach der Registrierung verknüpft der Administrator dein Konto mit deinem Mitglied. Erst dann werden Daten freigegeben.</p></section>`;
+  const signingUp=authMode==='signup';
+  $('#auth-gate').innerHTML=`<section class="card auth-card"><div class="auth-top">${heading(signingUp?'Konto erstellen':'Anmelden')}<p class="muted">${signingUp?'Benutzername und Passwort festlegen.':'Mit FantastiX-Konto anmelden.'}</p></div>
+   ${msg?`<div class="notice warning">${esc(msg)}</div>`:''}
+   <form id="reader-auth-form" class="stack">
+     <div class="field"><label>${signingUp?'Benutzername':'Benutzername oder bisherige E-Mail'}</label>
+     <input name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="120" ${signingUp?'minlength="3" maxlength="24" pattern="[A-Za-z][A-Za-z0-9_-]{2,23}"':''} placeholder="z. B. andi8" required></div>
+     <div class="field"><label>Passwort${signingUp?' (mindestens 8 Zeichen)':''}</label><input name="password" type="password" minlength="${signingUp?'8':'1'}" autocomplete="${signingUp?'new-password':'current-password'}" required></div>
+     <button class="button" type="submit">${signingUp?'Registrieren':'Anmelden'}</button>
+   </form>
+   <button class="ghost auth-toggle" type="button" id="auth-mode-toggle">${signingUp?'Schon registriert? Anmelden':'Neues Konto registrieren'}</button>
+   <p class="hint">${signingUp?'Keine E-Mail erforderlich. Der Admin schaltet dein Konto nach der Registrierung frei.':'Passwort vergessen? Bitte den Administrator kontaktieren.'}</p>
+   </section>`;
   return;
  }
- $('#auth-gate').innerHTML=`<section class="card auth-card"><h2>Freigabe ausstehend</h2><p class="muted">${esc(user.email||'Dein Konto')} ist angemeldet, aber noch keinem Mitglied zugeordnet. Bitte den Administrator um Freischaltung.</p>${msg?`<p class="notice warning">${esc(msg)}</p>`:''}<div class="stack"><button class="button" id="reader-retry" type="button">Freigabe prüfen</button><button class="ghost" id="reader-logout" type="button">Abmelden</button></div></section>`;
+ $('#auth-gate').innerHTML=`<section class="card auth-card"><h2>Freigabe ausstehend</h2><p class="muted">${esc(displayAccount())} ist angemeldet, aber noch keinem Mitglied zugeordnet.</p>${msg?`<p class="notice warning">${esc(msg)}</p>`:''}<div class="stack"><button class="button" id="reader-retry" type="button">Freigabe prüfen</button><button class="ghost" id="reader-logout" type="button">Abmelden</button></div></section>`;
 }
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
@@ -73,7 +73,7 @@ function renderApp(){
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
  $('#content').innerHTML=({dashboard,meetings,ranking,members,cash,profilePage}[tab])();
- $('#updated').textContent='Stand: '+dateTime(data.publishedAt||lastFetched);
+ $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
 function dashboard(){
  const completed=data.meetings.filter(m=>m.date<=today()).sort((a,b)=>b.date.localeCompare(a.date));
@@ -93,16 +93,17 @@ function dashboard(){
 }
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
- const admin=m.attendance?.[profile.member_id];
- const locked=admin&&['present','absent'].includes(admin.status)&&admin.source!=='reader';
- const deadline=deadlines.get(m.id),closed=deadline?! (Date.now()<new Date(deadline).getTime()):true;
- const own=locked?effective(m,profile.member_id):readerStatus(m,profile.member_id),status=own?.status||'';
- const summary=locked?'Vom Admin festgelegt':closed?'Abstimmung geschlossen':`Abstimmung bis ${deadlineLabel(deadline)}`;
+ const own=effective(m,profile.member_id);
+ const locked=!!(own&&coalesceSource(own)!=='member');
+ const deadline=deadlines.get(m.id),closed=deadline?Date.now()>=new Date(deadline).getTime():true;
+ const status=own?.status||'';
+ const summary=locked?'Vom Admin korrigiert':closed?'Abstimmung geschlossen':`Bis ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Da</button>
  <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht da</button></div>
- ${status?`<small class="muted">Deine Antwort: ${status==='present'?'Da':'Nicht da'}${locked?' (Admin)':''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
+ ${status?`<small class="muted">${status==='present'?'Zusage':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
+function coalesceSource(a){return a.source||'admin';}
 function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  const items=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date));
@@ -112,7 +113,7 @@ function meetings(){
  ${section('members')?`<p class="muted tiny">Organisator: ${esc(memberName(m.organizerId))}</p>`:''}
  ${votePanel(m)}
  ${rsvpRoster(m)}
- ${m.date<=today()?actualAttendance(m):''}
+ 
  ${section('absences')&&m.notes?`<p class="hint">${esc(m.notes)}</p>`:''}
  </section>`).join(''):empty('Noch keine Stammtische.')}`;
 }
@@ -131,7 +132,7 @@ function cash(){
  return `${heading('Kassa')}${section('cash')?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>`:''}
  ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div><section class="card"><h2>Strafen</h2><div class="list">${data.fines.map(f=>{const settled=data.payments.filter(p=>p.fineId===f.id).reduce((s,p)=>s+n(p.amountCents),0);return `<div class="item"><div class="details"><strong>${esc(memberName(f.memberId))}</strong><small>${esc(f.reason||'Strafe')}</small></div><div class="right"><strong>${money(f.amountCents)}</strong><small class="muted">${money(Math.max(0,f.amountCents-settled))} offen</small></div></div>`}).join('')||'<p>Keine Strafen</p>'}</div></section>`:''}`;
 }
-function profilePage(){return `${heading('Mein Profil')}<section class="card"><h2>${esc(member(profile.member_id)?.name||'Mitglied')}</h2><p class="muted">${esc(user?.email||'')}</p><p class="hint">Mitgliedsnummer: ${esc(member(profile.member_id)?.memberNumber||'–')}</p><div class="stack"><button type="button" class="ghost" id="reader-refresh">Aktualisieren</button><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></div></section>`;}
+function profilePage(){return `${heading('Mein Profil')}<section class="card"><h2>${esc(member(profile.member_id)?.name||'Mitglied')}</h2><p class="muted">${esc(displayAccount())}</p><p class="hint">Mitgliedsnummer: ${esc(member(profile.member_id)?.memberNumber||'–')}</p><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input type="password" name="newPassword" minlength="8" autocomplete="new-password" required></div><div class="field"><label>Passwort wiederholen</label><input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></div><button type="submit" class="ghost">Passwort ändern</button></form><div class="stack"><button type="button" class="ghost" id="reader-refresh">Aktualisieren</button><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></div></section>`;}
 async function initClient(){
  const cfg=window.FANTASTIX_CLOUD;
  if(!cfg||!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(String(cfg.url||''))||!String(cfg.key||'').startsWith('sb_publishable_')&&!String(cfg.key||'').startsWith('eyJ'))throw Error('Cloud noch nicht eingerichtet.');
@@ -142,57 +143,115 @@ async function initClient(){
 async function refresh(){
  if(!cloud||!user)return renderGate();
  try{
-  const {data:account,error:accountError}=await cloud.from('fantastix_reader_profiles').select('member_id,email').eq('user_id',user.id).maybeSingle();
+  const {data:account,error:accountError}=await cloud.from('fantastix_reader_profiles').select('member_id,email,username').eq('user_id',user.id).maybeSingle();
   if(accountError)throw accountError;profile=account;
   if(!profile?.member_id){data=null;return renderGate();}
-  const [pub,readerVotes,windows]=await Promise.all([
+  const [pub,windows]=await Promise.all([
    cloud.from('fantastix_public').select('content,published_at').eq('id','main').eq('is_published',true).maybeSingle(),
-   cloud.from('fantastix_reader_votes').select('meeting_id,member_id,status,updated_at'),
    cloud.rpc('fantastix_reader_deadlines')
   ]);
-  if(pub.error)throw pub.error;if(readerVotes.error)throw readerVotes.error;if(windows.error)throw windows.error;
+  if(pub.error)throw pub.error;if(windows.error)throw windows.error;
   if(!pub.data?.content){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
   const d=pub.data.content;
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
-  data=d;votes=readerVotes.data||[];deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
+  data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
   renderApp();
  }catch(e){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');}
 }
 async function doAuth(form){
- if(busy)return;busy=true;
- const fd=new FormData(form),email=String(fd.get('email')||'').trim(),password=String(fd.get('password')||'');
+ if(busy)return;
+ const fd=new FormData(form),raw=String(fd.get('username')||'').trim();
+ const username=raw.toLowerCase(),password=String(fd.get('password')||'');
+ if(authMode==='signup'&&!USERNAME_RE.test(username))return renderGate('Benutzername: 3–24 Zeichen, mit Buchstaben beginnen; erlaubt sind a–z, 0–9, _ und -.');
+ if(authMode==='signup'&&password.length<8)return renderGate('Das Passwort muss mindestens 8 Zeichen haben.');
+ if(authMode==='login'&&!raw)return renderGate('Bitte Benutzernamen eingeben.');
+ busy=true;
  try{
   if(authMode==='signup'){
-   const {data:result,error}=await cloud.auth.signUp({email,password,options:{emailRedirectTo:new URL('./lesen.html',location.href).href}});
+   const {data:result,error}=await cloud.auth.signUp({
+     email:usernameEmail(username),password,options:{data:{fantastix_username:username}}
+   });
    if(error)throw error;
-   if(result.session){user=result.user;await refresh();}
-   else {authMode='login';renderGate('Konto angelegt. Bitte E-Mail bestätigen und danach anmelden.');}
+   if(!result?.session){
+    authMode='login';
+    renderGate('Konto nicht direkt aktiviert. Bitte in Supabase die Einstellung „Confirm Email“ deaktivieren. Es ist kein E-Mail-Versand vorgesehen.');
+   } else {
+    user=result.user;
+    await refresh();
+   }
   }else{
-   const {data:result,error}=await cloud.auth.signInWithPassword({email,password});if(error)throw error;
-   user=result.user;await refresh();
+   const login=raw.includes('@')?raw.toLowerCase():usernameOrEmail(username);
+   const {data:result,error}=await cloud.auth.signInWithPassword({email:login,password});
+   if(error)throw error;
+   user=result.user;
+   await refresh();
   }
- }catch(e){renderGate('Anmeldung fehlgeschlagen: '+e.message);}finally{busy=false;}
+ }catch(e){
+  const description=String(e.message||e);
+  const message=/rate.limit|too.many.requests|429/i.test(description)?'Zu viele Anmeldeversuche. Bitte einige Minuten warten und nicht mehrfach registrieren.':
+    /already.registered|already.exists|duplicate|unique/i.test(description)?'Dieser Benutzername ist bereits vergeben. Bitte einen anderen wählen.':
+    /invalid.login.credentials/i.test(description)?'Benutzername oder Passwort ist nicht korrekt. Für alte Admin-Konten die bisherige E-Mail eingeben.':
+    /invalid.email|email.address.*invalid/i.test(description)?'Die interne Anmeldekennung wurde von Supabase abgelehnt. Bitte den Administrator kontaktieren.':
+    description;
+  renderGate('Anmeldung fehlgeschlagen: '+message);
+ }finally{busy=false;}
 }
-async function logout(){if(!cloud)return;await cloud.auth.signOut();user=null;profile=null;data=null;votes=[];deadlines.clear();tab='dashboard';authMode='login';renderGate();}
-async function castVote(meetingId,status){
+async function changePassword(form){
+ const fd=new FormData(form),password=String(fd.get('newPassword')||''),confirmPassword=String(fd.get('confirmPassword')||'');
+ if(password.length<8||password!==confirmPassword)return alert('Bitte zweimal dasselbe Passwort mit mindestens 8 Zeichen eingeben.');
+ const {error}=await cloud.auth.updateUser({password});
+ if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
+ form.reset();alert('Passwort geändert.');
+}
+async function logout(){if(!cloud)return;await cloud.auth.signOut();user=null;profile=null;data=null;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
- const d=deadlines.get(meetingId);
- if(!d||Date.now()>=new Date(d).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
- const own=m.attendance?.[profile.member_id];if(own&&own.source!=='reader'&&['present','absent'].includes(own.status))return alert('Der Admin hat die Anwesenheit festgelegt.');
+ const deadline=deadlines.get(meetingId);
+ if(!deadline||Date.now()>=new Date(deadline).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
+ const own=effective(m,profile.member_id);
+ if(own&&coalesceSource(own)!=='member')return alert('Der Admin hat die Stimme korrigiert.');
+ if(status==='absent'&&!reason.trim())return alert('Bitte einen Grund eintragen.');
  busy=true;renderApp();
- try{const {error}=await cloud.rpc('fantastix_cast_vote',{p_meeting_id:meetingId,p_status:status});if(error)throw error;await refresh();}
- catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
+ try{
+   const {error}=await cloud.rpc('fantastix_cast_vote',{
+     p_meeting_id:meetingId,p_status:status,p_reason:status==='absent'?reason.trim():''
+   });
+   if(error)throw error;
+   await refresh();
+ }catch(e){alert('Abstimmung nicht gespeichert: '+e.message);}
  finally{busy=false;if(data)renderApp();}
 }
-document.addEventListener('submit',e=>{if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}});
+function askAbsenceReason(meetingId){
+ const meeting=data?.meetings?.find(m=>m.id===meetingId);
+ const saved=meeting?effective(meeting,profile?.member_id):null;
+ const dlg=$('#absence-dialog');
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>Grund für „Nicht da“</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div>
+ <form id="absence-reason-form"><input type="hidden" name="meetingId" value="${esc(meetingId)}"><div class="field"><label>Abwesenheitsgrund *</label>
+ <input name="reason" maxlength="150" minlength="1" value="${esc(saved?.status==='absent'?saved.reason||'':'')}" placeholder="z. B. Urlaub, beruflich verhindert" required autofocus></div>
+ <div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Nicht da speichern</button></div></form></div>`;
+ dlg.showModal();
+}
+document.addEventListener('submit',e=>{
+ if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
+ if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
+ if(e.target.id==='absence-reason-form'){
+   e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
+   if(!reason)return alert('Bitte einen Abwesenheitsgrund eintragen.');
+   $('#absence-dialog').close();castVote(String(fd.get('meetingId')||''),'absent',reason);
+ }
+});
 document.addEventListener('click',e=>{
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
  const nav=e.target.closest('[data-tab]');if(nav){tab=nav.dataset.tab;renderApp();scrollTo({top:0,behavior:'instant'});return;}
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
- const vote=e.target.closest('[data-vote]');if(vote){castVote(vote.dataset.meetingId,vote.dataset.vote);}
+ if(e.target.closest('#close-absence,#cancel-absence')){$('#absence-dialog').close();return;}
+ const vote=e.target.closest('[data-vote]');if(vote){
+   if(vote.dataset.vote==='absent')askAbsenceReason(vote.dataset.meetingId);
+   else castVote(vote.dataset.meetingId,'present');
+ }
 });
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
