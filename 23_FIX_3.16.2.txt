@@ -1,0 +1,21 @@
+-- FantastiX 3.16.2 – zuerst Backup erstellen.
+-- Der Index von 3.16.0 blockiert legitime Stimmen; sofort entfernen.
+DROP INDEX IF EXISTS public.fx_event_vote_message_dedupe;
+
+-- Quittieren der Benachrichtigungen durch angemeldete Nutzer erlauben.
+-- Die bestehenden RLS-Regeln beschränken Lese-/Schreibzugriff auf eigene Einträge.
+GRANT SELECT, INSERT, UPDATE ON TABLE public.fantastix_update_reads TO authenticated;
+
+-- Eigenen Lesezustand aktualisieren, aber keine fremden Einträge.
+DROP POLICY IF EXISTS fx_update_reads_update ON public.fantastix_update_reads;
+CREATE POLICY fx_update_reads_update ON public.fantastix_update_reads
+FOR UPDATE TO authenticated USING (user_id = (SELECT auth.uid()))
+WITH CHECK (user_id = (SELECT auth.uid()));
+
+-- Admin-Korrektur der Stammtisch-Stimme: die bestehende RPC
+-- fantastix_cast_vote muss separat geändert werden. Ohne ihre aktuelle
+-- Definition ist ein sicheres Überschreiben nicht möglich.
+-- Zum Anzeigen der Definition im SQL Editor:
+-- SELECT pg_get_functiondef(p.oid) FROM pg_proc p
+-- JOIN pg_namespace n ON n.oid=p.pronamespace
+-- WHERE n.nspname='public' AND p.proname='fantastix_cast_vote';
