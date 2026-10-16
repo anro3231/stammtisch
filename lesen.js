@@ -1,5 +1,5 @@
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
-/* FantastiX 3.15.0 · Einheitliche Anwesenheit, Benutzername + Passwort. */
+/* FantastiX 3.15.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=x=>Math.max(0,Number.isFinite(+x)?Math.round(+x):0);
