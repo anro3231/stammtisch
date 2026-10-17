@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.18.0";
+const APP_VERSION = window.FX_VERSION || "3.18.1";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -256,7 +256,7 @@ function excursionForm(id){
   const v=already.find(v=>v.member_id===m.id),isMine=ownMemberId===m.id;
   return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
    <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
-   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}</div>
+   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}</div>
    <div class="excursion-admin-vote-buttons" role="group" aria-label="Eventszusage für ${esc(m.name)}">
     ${[['yes','✓ Dabei'],['no','× Nicht dabei'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
@@ -280,7 +280,7 @@ function updateExcursionVoteControls(id){
  const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} dabei / ${selected.filter(v=>v.status==='no').length} nicht dabei`;
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
-  if(label){label.textContent=(v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;}else note?.remove();}
+  if(label){label.textContent=(v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
   for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
    const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
    button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));
@@ -461,18 +461,28 @@ function meetingForm(id){
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Dabei</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Nicht dabei</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${entry.status==='present'&&entry.note?`<div class="field" style="margin:8px 0"><small class="muted">Notiz des Mitglieds: ${esc(entry.note)}</small></div>`:''}${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
- ${id?'<div id="member-cloud-notes" class="notice">Mitgliedernotizen werden geladen …</div>':''}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Dabei</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Nicht dabei</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}<small class="vote-note" data-meeting-member-note="${esc(person.id)}" ${entry.status==='present'&&entry.note?'':'hidden'}>${entry.note?'📝 '+esc(entry.note):''}</small></div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${id?'<small id="member-cloud-notes" class="muted tiny" role="status">Mitgliedernotizen werden geladen …</small>':''}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`,'meeting',id);
  if(id)loadAdminMeetingNotes(id);
 }
 async function loadAdminMeetingNotes(id){
- const el=document.getElementById('member-cloud-notes');if(!el)return;
+ const el=document.getElementById('member-cloud-notes'),root=adminEditorRoot();if(!el||!root)return;
  if(!cloudClient||!cloudUser){el.textContent='Mitgliedernotizen: Cloud-Anmeldung erforderlich.';return;}
- const {data:rows,error}=await cloudClient.from('fantastix_meeting_notes').select('member_id,note').eq('meeting_id',id);
- if(!el.isConnected)return;
- if(error){el.textContent='Mitgliedernotizen nicht verfügbar (SQL 19 prüfen).';return;}
- el.innerHTML='<strong>Notizen der Mitglieder</strong>'+((rows||[]).filter(x=>x.note).map(x=>'<p>'+esc(member(x.member_id)?.name||'Mitglied')+': '+esc(x.note)+'</p>').join('')||'<p>Keine zusätzlichen Notizen.</p>');
+ try{
+  const {data:rows,error}=await cloudClient.from('fantastix_meeting_notes').select('member_id,note').eq('meeting_id',id);
+  if(!el.isConnected||adminEntry?.id!==id)return;
+  if(error)throw error;
+  const notes=new Map((rows||[]).map(x=>[x.member_id,x.note]));
+  for(const note of root.querySelectorAll('[data-meeting-member-note]')){
+   const memberId=note.dataset.meetingMemberNote;
+   const field=[...root.querySelectorAll('input[name]')].find(input=>input.name==='status-'+memberId);
+   const fallback=data.meetings.find(x=>x.id===id)?.attendance?.[memberId]?.note||'';
+   const text=notes.get(memberId)||fallback;
+   note.textContent=text?'📝 '+text:'';note.hidden=field?.value!=='present'||!text;
+  }
+  el.textContent='';el.hidden=true;
+ }catch(error){if(el.isConnected)el.textContent='Mitgliedernotizen konnten nicht geladen werden.';}
 }
 function fineForm(){
  if(!data.members.length)return alert('Bitte lege zuerst ein Mitglied an.');
@@ -487,7 +497,7 @@ function fineView(id){
  const payments=data.payments.filter(p=>p.fineId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
  modal('Strafendetails',`<div class="stack"><div><label>Mitglied</label><strong>${esc(member(f.memberId)?.name||'Unbekannt')}</strong></div><div><label>Erfasst am</label><strong>${fmtDate(f.date)}</strong></div><div><label>Grund</label><strong>${esc(f.reason)}</strong></div><div class="row"><div><label>Gesamtbetrag</label><strong>${money(f.amountCents)}</strong></div><div class="right"><label>Offen</label><strong>${money(fineOpen(f))}</strong></div></div></div><div class="separator"></div><h3>Zahlungen</h3>${payments.length?payments.map(p=>`<div class="item"><div class="details"><strong>${money(p.amountCents)}</strong><small>${esc(p.method||'Bar')} ${p.note?`· ${esc(p.note)}`:''}</small></div><button class="smallbtn" data-action="payment-delete" data-id="${p.id}">Stornieren</button></div>`).join(''):empty('🧾','Noch keine Zahlung')}<div class="foot">${fineOpen(f)?`<button class="button" data-action="fine-pay" data-id="${f.id}">Zahlung erfassen</button>`:''}<button class="ghost" data-action="close">Schließen</button></div>${payments.length?'':'<div class="separator"></div><button class="danger-btn" data-action="fine-delete" data-id="'+f.id+'">Unbezahlte Strafe löschen</button>'}`);
 }
-function attStatus(id,status){const root=adminEditorRoot();const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;if(adminEntry)adminEntry.dirty=true;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');}
+function attStatus(id,status){const root=adminEditorRoot();const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;if(adminEntry)adminEntry.dirty=true;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');const note=parent.querySelector('[data-meeting-member-note]');if(note)note.hidden=field.value!=='present'||!note.textContent;}
 function saveMember(fd){
  const id=String(fd.get('id')||''),name=String(fd.get('name')||'').trim(),rawNo=String(fd.get('memberNumber')||'').trim(),number=rawNo===''?null:Number(rawNo);
  if(!name)return alert('Bitte einen Namen eingeben.');
