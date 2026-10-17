@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.19.1";
+const APP_VERSION = window.FX_VERSION || "3.21.0";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -44,6 +44,8 @@ function validateBackup(v){
  if(!v.payments.every(p=>Number.isSafeInteger(p.amountCents)&&p.amountCents>=0&&typeof p.fineId==='string'))throw Error('Ungültige Zahlungen.');
  if(!v.meetings.every(m=>Object.entries(m.attendance).every(([memberId,a])=>memberId.length<250 && a && typeof a==='object' && ['present','absent'].includes(a.status) && String(a.reason||'').length<=150 && String(a.note||'').length<=300)))throw Error('Ungültige Anwesenheiten.');
  if(v.rsvpCutoffDays!==undefined&&(!Number.isInteger(v.rsvpCutoffDays)||v.rsvpCutoffDays<0||v.rsvpCutoffDays>14))throw Error('Ungültige Abstimmungsfrist.');
+ if(v.rsvpReminderHours!==undefined&&(!Number.isInteger(v.rsvpReminderHours)||v.rsvpReminderHours<1||v.rsvpReminderHours>720))throw Error('Ungültige Erinnerungszeit.');
+ if(v.rsvpReminderEnabled!==undefined&&typeof v.rsvpReminderEnabled!=='boolean')throw Error('Ungültige Erinnerungseinstellung.');
  if(v.rsvpCutoffHours!==undefined&&(!Number.isInteger(v.rsvpCutoffHours)||v.rsvpCutoffHours<0||v.rsvpCutoffHours>720))throw Error('Ungültige Abstimmungsfrist in Stunden.');
  const centsOk=x=>Number.isSafeInteger(x)&&Math.abs(x)<1e12;
  if(!v.fines.every(f=>centsOk(f.amountCents) && String(f.reason).length<=600))throw Error('Ungültige Strafbeträge.');
@@ -137,6 +139,8 @@ function voteTime(value){
 function effectiveAttendance(m,id){const own=m.attendance?.[id];return own&&['present','absent'].includes(own.status)?own:null;}
 function stats(id,year){const meetings=data.meetings.filter(m=>doneMeeting(m)&&(!year||yearOf(m.date)===String(year)));const present=meetings.filter(m=>effectiveAttendance(m,id)?.status==='present').length;const eligible=meetings.filter(m=>!!effectiveAttendance(m,id)).length;return {present,eligible,pct:eligible?Math.round(100*present/eligible):0};} 
 function leaders(year){const rows=rankRows(year);return rows.length&&rows[0].count>0?rows.filter(m=>m.count===rows[0].count):[];}
+function voteReminderHours(){const h=data.rsvpReminderHours;return Number.isInteger(h)&&h>=1&&h<=720?h:24;}
+function voteReminderEnabled(){return data.rsvpReminderEnabled!==false;}
 function voteDeadlineHours(){const h=Number(data.rsvpCutoffHours);if(data.rsvpCutoffHours!==undefined&&Number.isInteger(h)&&h>=0&&h<=720)return h;const d=Number(data.rsvpCutoffDays);return (Number.isInteger(d)&&d>=0&&d<=14?d:1)*24;}
 function allTime(id){return n(member(id)?.historicalCount)+stats(id).present;}
 function rankRows(year){return [...data.members].sort((a,b)=>(year?yearCount(b.id,year)-yearCount(a.id,year):allTime(b.id)-allTime(a.id))||a.name.localeCompare(b.name,'de')).map((m,i)=>({...m,place:i+1,count:year?yearCount(m.id,year):allTime(m.id),pct:stats(m.id,year).pct}));}
@@ -167,9 +171,23 @@ let fxNewAlerts=[];
 async function fxLoadNewAlerts(){if(!cloudClient||!cloudUser)return;try{const r=await cloudClient.from('fantastix_updates').select('id,kind,title,body,created_at').eq('recipient_member_id','ADMIN').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;const ids=(r.data||[]).map(x=>x.id);let reads=[];if(ids.length){const q=await cloudClient.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',cloudUser.id);if(q.error)throw q.error;reads=(q.data||[]).map(x=>x.update_id);}fxNewAlerts=(r.data||[]).map(x=>({...x,read_at:reads.includes(x.id)?x.created_at:null}));}catch(e){console.warn('Neue Meldungen: SQL 20 erforderlich',e.message);}}
 async function fxReadNew(id){if(!cloudClient||!cloudUser)return;const list=id?[id]:fxNewAlerts.filter(x=>!x.read_at).map(x=>x.id);if(list.length){const r=await cloudClient.from('fantastix_update_reads').upsert(list.map(update_id=>({update_id,user_id:cloudUser.id})),{onConflict:'update_id,user_id'});if(r.error)return alert(r.error.message);}await fxLoadNewAlerts();fxOpenInbox();}
 function fxInboxHTML(){
+ function noticeText(x){
+  const labels={vote:'Abstimmung',organizer_vote:'Abstimmung zu deinem Termin',organizer_assignment:'Organisator-Zuweisung',fine:'Strafe',paid:'Bezahlte Strafe',vote_reminder:'Abstimmungserinnerung',created:'Neuer Termin',schedule:'Terminänderung',location:'Ortsänderung',deleted:'Termin entfernt',announcement:'Nachricht'};
+  const label=labels[x.kind]||'Hinweis',body=String(x.body||'').trim(),title=String(x.title||'Benachrichtigung');
+  if(!body)return {label,body:'Du hast eine neue Benachrichtigung erhalten.'};
+  if(/[.!?]$/.test(body))return {label,body};
+  if(x.kind==='fine')return {label,body:`Du hast eine neue Strafe erhalten. Grund: ${body}.`};
+  if(x.kind==='paid')return {label,body:`Deine Strafe wegen „${body}“ wurde vollständig bezahlt.`};
+  if(['vote','organizer_vote'].includes(x.kind)&&body.includes(' · ')){
+   const [who,...details]=body.split(' · '),action=/zusage/i.test(title)?'zugesagt':/absage/i.test(title)?'abgesagt':'abgestimmt';
+   return {label,body:`${who} hat für ${/event/i.test(title)?'das Event':'den Stammtisch'} ${details.join(' · ')} ${action}.`};
+  }
+  return {label,body:`Zu „${title}“: ${body}.`};
+ }
+
  const old=fxVisibleLegacyAlerts(), fresh=fxNewAlerts;
  const ordered=[...fresh.map(x=>({x,isNew:true})),...old.map(x=>({x,isNew:false}))].sort((a,b)=>(Date.parse(b.x.created_at)||0)-(Date.parse(a.x.created_at)||0));
- const item=(x,isNew)=>`<article class="fx-inbox-item ${x.read_at?'':'unread'}"><div class="fx-inbox-item-top"><span class="fx-type">${isNew?(x.kind==='vote'?'🗳️ Abstimmung':'📣 Info'):'📣 Hinweis'}</span>${!x.read_at?'<span class="fx-unread-dot" aria-label="Ungelesen"></span>':''}</div><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><div class="fx-inbox-item-bottom"><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<button class="smallbtn" data-action="${isNew?'fx-new-read':'fx-read'}" data-id="${Number(x.id)}" type="button">Gelesen</button>`:''}</div></article>`;
+ const item=(x,isNew)=>`<article class="fx-inbox-item ${x.read_at?'':'unread'}"><div class="fx-inbox-item-top"><span class="fx-type">${esc(noticeText(x).label)}</span>${!x.read_at?'<span class="fx-unread-dot" aria-label="Ungelesen"></span>':''}</div><strong>${esc(x.title)}</strong><p>${esc(noticeText(x).body)}</p><div class="fx-inbox-item-bottom"><small>${esc(new Date(x.created_at).toLocaleString('de-AT'))}</small>${!x.read_at?`<button class="smallbtn" data-action="${isNew?'fx-new-read':'fx-read'}" data-id="${Number(x.id)}" type="button">Gelesen</button>`:''}</div></article>`;
  return `<div class="fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button class="close" data-action="close" aria-label="Schließen" type="button">×</button></div><div class="fx-inbox-summary"><span>${fxAlertCount()} ungelesen · ${fresh.length+old.length} Meldungen</span><button class="smallbtn" data-action="fx-read-all" type="button" ${fxAlertCount()?'':'disabled'}>Alle als gelesen</button></div>${ordered.map(({x,isNew})=>item(x,isNew)).join('')||'<p class="muted">Noch keine Benachrichtigungen.</p>'}</div>`;
 }
 async function fxOpenInbox(){await Promise.all([fxLoadAlerts(true),fxLoadNewAlerts()]);modal('Benachrichtigungen',fxInboxHTML());}
@@ -200,8 +218,8 @@ function voteTimeRemaining(deadline,now=Date.now()){
  let minutes=Math.ceil((end-now)/60000);
  const days=Math.floor(minutes/1440);minutes%=1440;
  const hours=Math.floor(minutes/60);minutes%=60;
- const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} ${hours===1?'Stunde':'Stunden'}`);if(minutes)parts.push(`${minutes} ${minutes===1?'Minute':'Minuten'}`);
- return `Noch ${parts.length>1?parts.slice(0,-1).join(', ')+' und '+parts.at(-1):parts[0]} Zeit zum Abstimmen.`;
+ const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} Std.`);if(minutes)parts.push(`${minutes} Min.`);
+ return `Noch ${parts.join(' ')} abstimmen`;
 }
 function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data-vote-deadline="${deadline??''}">${voteTimeRemaining(deadline)}</p>`;}
 function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
@@ -378,8 +396,8 @@ function settingsHTML(){
  <div class="stack"><button class="button" data-action="cloud-setup">${cloudUser?'Cloud & Freigaben':'Als Administrator anmelden'}</button>
  ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
- <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button></div></section>
- <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische werden ebenfalls automatisch per Push angekündigt. Es werden keine Fristerinnerungen versendet.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
+ <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button><p class="hint">Erinnerung: ${voteReminderEnabled()?voteReminderHours()+' Stunden vor Fristende':'ausgeschaltet'}</p></div></section>
+ <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische werden ebenfalls automatisch per Push angekündigt. Fristerinnerungen lassen sich unter „Abstimmungsfrist“ einrichten.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
  <section class="card"><h2>Cloud-Sicherheit · Version 3.12</h2><p class="hint">Serverseitiger Änderungsverlauf und wöchentliche Cloud-Sicherungen. Nur als Administrator abrufbar.</p><div class="stack"><button class="button" data-action="audit-list">Änderungsverlauf ansehen</button><button class="ghost" data-action="backup-list">Cloud-Backups & Wiederherstellung</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
@@ -670,8 +688,13 @@ async function saveReaderAccess(fd){
    await reloadReaderAdminData();closeModal();alert('Benutzerzuordnungen gespeichert.');
  }catch(e){alert('Zuordnung fehlgeschlagen: '+e.message+' (Bitte Liste neu laden.)');}
 }
-function voteSettingsForm(){modal('Abstimmungsfrist',`<form data-form="vote-settings"><div class="field"><label>Stunden vor Beginn des Stammtischs</label><input name="hours" type="number" min="0" max="720" step="1" value="${voteDeadlineHours()}" required></div><p class="hint">24 = ein Tag vorher · 0 = bis zum Beginn. Maßgeblich ist die Uhrzeit des Stammtischs (Wien).</p>${footer('Frist speichern')}</form>`);}
-function saveVoteSettings(fd){const hours=Number(fd.get('hours'));if(!Number.isInteger(hours)||hours<0||hours>720)return alert('Bitte 0 bis 720 Stunden eingeben.');data.rsvpCutoffHours=hours;closeModal();persist();}
+function voteSettingsForm(){modal('Abstimmungsfrist & Erinnerung',`<form data-form="vote-settings"><div class="field"><label for="vote-hours">Frist: Stunden vor Beginn des Stammtischs</label><input id="vote-hours" name="hours" type="number" min="0" max="720" step="1" value="${voteDeadlineHours()}" required></div><p class="hint">24 = ein Tag vorher · 0 = bis zum Beginn. Maßgeblich ist die Uhrzeit des Stammtischs (Wien).</p><div class="separator"></div><div class="field"><label style="display:flex;align-items:center;gap:9px"><input name="reminderEnabled" type="checkbox" ${voteReminderEnabled()?'checked':''}>Automatische Abstimmungserinnerung</label></div><div class="field"><label for="reminder-hours">Erinnerung: Stunden vor Ablauf der Frist</label><input id="reminder-hours" name="reminderHours" type="number" min="1" max="720" step="1" value="${voteReminderHours()}" required></div><p class="hint">Einmal pro Stammtisch an alle freigeschalteten aktiven Mitglieder, auch wenn sie schon abgestimmt haben. Push erhalten Geräte mit aktivierten Mitteilungen. Beispiel: Stammtisch Freitag 19 Uhr, Frist 24 Stunden, Erinnerung 24 Stunden → Erinnerung Mittwoch 19 Uhr.</p>${footer('Einstellungen speichern')}</form>`);}
+function saveVoteSettings(fd){
+ const hours=Number(fd.get('hours')),reminderHours=Number(fd.get('reminderHours'));
+ if(!Number.isInteger(hours)||hours<0||hours>720)return alert('Bitte 0 bis 720 Stunden für die Frist eingeben.');
+ if(!Number.isInteger(reminderHours)||reminderHours<1||reminderHours>720)return alert('Bitte 1 bis 720 Stunden für die Erinnerung eingeben.');
+ data.rsvpCutoffHours=hours;data.rsvpReminderHours=reminderHours;data.rsvpReminderEnabled=fd.has('reminderEnabled');closeModal();persist();
+}
 
 async function noticesAdminList(){
  if(!cloudReady||!cloudClient||!cloudUser)throw Error('Zuerst als Administrator mit der Cloud anmelden.');
@@ -950,8 +973,9 @@ if(ensureCashbook(data)){try{localStorage.setItem(DATA_KEY,JSON.stringify(data))
 postMonthlyContributions();render();readSnapshots().then(v=>{snapshotCount=v.length;if(v.length){snapshotStatus='Letzter Sicherungsstand: '+new Date(v[0].savedAt).toLocaleString('de-AT');}else if(data.members.length||data.meetings.length||data.fines.length||data.payments.length){queueSnapshot(data);}if(page==='settings')render();}).catch(e=>{snapshotError=true;snapshotStatus='Lokale Sicherung nicht verfügbar: '+(e.message||String(e));});if(getCloudConfig())connectCloud();
 if('serviceWorker'in navigator && window.isSecureContext){navigator.serviceWorker.register('./service-worker.js').catch(console.warn);}
 
-setInterval(()=>{if(!document.hidden&&cloudUser)fxLoadAlerts(true);},45000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser)fxLoadAlerts(true);});
+async function fxRefreshBells(){await Promise.all([fxLoadAlerts(true),fxLoadNewAlerts()]);render();}
+setInterval(()=>{if(!document.hidden&&cloudUser)fxRefreshBells();},45000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser)fxRefreshBells();});
 setTimeout(()=>{if(cloudUser){fxLoadAlerts(true);fxLoadNewAlerts().then(()=>render())};},3500);
 
 setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser)loadOnlinePresenceAdmin().catch(console.warn);},120000);

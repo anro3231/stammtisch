@@ -1,4 +1,4 @@
-const CACHE='fantastix-v3.19.1';
+const CACHE='fantastix-v3.21.0';
 const FILES=['./','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung
@@ -27,7 +27,8 @@ self.addEventListener('fetch',e=>{
 // Echte Web Push Nachricht - auch bei geschlossener FantastiX Web-App.
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch{payload={};}
- const kind=['meeting_new','announcement'].includes(payload.kind)?payload.kind:'announcement';
+ const kind=['meeting_new','announcement','vote_reminder'].includes(payload.kind)?payload.kind:'announcement';
+ if(kind==='vote_reminder'&&Number.isFinite(Date.parse(payload.deadlineAt))&&Date.now()>=Date.parse(payload.deadlineAt))return;
  const title=String(payload.title||'FantastiX').slice(0,100);
  const body=String(payload.body||'Neue Nachricht').slice(0,220);
  event.waitUntil(self.registration.showNotification(title,{

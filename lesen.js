@@ -124,8 +124,8 @@ function voteTimeRemaining(deadline,now=Date.now()){
  let minutes=Math.ceil((end-now)/60000);
  const days=Math.floor(minutes/1440);minutes%=1440;
  const hours=Math.floor(minutes/60);minutes%=60;
- const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} ${hours===1?'Stunde':'Stunden'}`);if(minutes)parts.push(`${minutes} ${minutes===1?'Minute':'Minuten'}`);
- return `Noch ${parts.length>1?parts.slice(0,-1).join(', ')+' und '+parts.at(-1):parts[0]} Zeit zum Abstimmen.`;
+ const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} Std.`);if(minutes)parts.push(`${minutes} Min.`);
+ return `Noch ${parts.join(' ')} abstimmen`;
 }
 function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data-vote-deadline="${deadline??''}">${voteTimeRemaining(deadline)}</p>`;}
 function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
@@ -241,7 +241,21 @@ function lastSeenReader(id){const v=readerPresence[id];if(!v)return 'Noch keine 
 async function refreshReaderExtras(){if(!cloud||!user||!profile?.member_id)return;try{await cloud.rpc('fantastix_touch_presence');const p=await cloud.from('fantastix_activity').select('member_id,last_seen_at');if(!p.error)readerPresence=Object.fromEntries((p.data||[]).map(x=>[x.member_id,x.last_seen_at]));}catch(e){console.warn('Online-Status SQL 20:',e.message);}
  try{const r=await cloud.from('fantastix_updates').select('id,kind,title,body,created_at').neq('kind','vote').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;readerUpdates=r.data||[];const ids=readerUpdates.map(x=>x.id);readerUpdateReads=new Set();if(ids.length){const q=await cloud.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',user.id);if(!q.error)readerUpdateReads=new Set((q.data||[]).map(x=>x.update_id));}const bell=$('#reader-bell');if(bell)bell.innerHTML='🔔'+(readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length?' <b>'+readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length+'</b>':'');}catch(e){console.warn('Benachrichtigungen SQL 20:',e.message);}}
 function readerBell(){const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;return `<button type="button" id="reader-bell" class="reader-bell" aria-label="Benachrichtigungen">🔔 ${unread?`<b>${unread}</b>`:''}</button>`;}
-function readerInbox(){return `<section class="card fx-reader-inbox"><div class="row"><h2>🔔 Benachrichtigungen</h2><button class="smallbtn" id="reader-inbox-close">Schließen</button></div><p class="muted tiny">${readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length} ungelesen</p>${[...readerUpdates].sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0)).map(x=>`<div class="fx-inbox-item ${readerUpdateReads.has(x.id)?'':'unread'}"><small>${esc(x.kind)}</small><strong>${esc(x.title)}</strong><p>${esc(x.body)}</p><small>${dateTime(x.created_at)}</small></div>`).join('')||'<p>Keine Benachrichtigungen</p>'}<button class="ghost" id="reader-read-all">Alle als gelesen markieren</button></section>`;}
+function readerInbox(){
+ function noticeText(x){
+  const labels={vote:'Abstimmung',organizer_vote:'Abstimmung zu deinem Termin',organizer_assignment:'Organisator-Zuweisung',fine:'Strafe',paid:'Bezahlte Strafe',vote_reminder:'Abstimmungserinnerung',created:'Neuer Termin',schedule:'Terminänderung',location:'Ortsänderung',deleted:'Termin entfernt',announcement:'Nachricht'};
+  const label=labels[x.kind]||'Hinweis',body=String(x.body||'').trim(),title=String(x.title||'Benachrichtigung');
+  if(!body)return {label,body:'Du hast eine neue Benachrichtigung erhalten.'};
+  if(/[.!?]$/.test(body))return {label,body};
+  if(x.kind==='fine')return {label,body:`Du hast eine neue Strafe erhalten. Grund: ${body}.`};
+  if(x.kind==='paid')return {label,body:`Deine Strafe wegen „${body}“ wurde vollständig bezahlt.`};
+  if(['vote','organizer_vote'].includes(x.kind)&&body.includes(' · ')){
+   const [who,...details]=body.split(' · '),action=/zusage/i.test(title)?'zugesagt':/absage/i.test(title)?'abgesagt':'abgestimmt';
+   return {label,body:`${who} hat für ${/event/i.test(title)?'das Event':'den Stammtisch'} ${details.join(' · ')} ${action}.`};
+  }
+  return {label,body:`Zu „${title}“: ${body}.`};
+ }
+return `<section class="card fx-reader-inbox"><div class="row"><h2>🔔 Benachrichtigungen</h2><button class="smallbtn" id="reader-inbox-close">Schließen</button></div><p class="muted tiny">${readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length} ungelesen</p>${[...readerUpdates].sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0)).map(x=>`<div class="fx-inbox-item ${readerUpdateReads.has(x.id)?'':'unread'}"><small>${esc(noticeText(x).label)}</small><strong>${esc(x.title)}</strong><p>${esc(noticeText(x).body)}</p><small>${dateTime(x.created_at)}</small></div>`).join('')||'<p>Keine Benachrichtigungen</p>'}<button class="ghost" id="reader-read-all">Alle als gelesen markieren</button></section>`;}
 let readerInboxOpen=false;
 async function readerReadAll(){const ids=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).map(x=>x.id);if(ids.length){const r=await cloud.from('fantastix_update_reads').upsert(ids.map(update_id=>({update_id,user_id:user.id})),{onConflict:'update_id,user_id'});if(r.error)return alert(r.error.message);}ids.forEach(id=>readerUpdateReads.add(id));renderApp();}
 
@@ -351,8 +365,8 @@ function base64UrlToUint8Array(s){const pad='='.repeat((4-s.length%4)%4);const r
 function pushSupported(){return window.isSecureContext&&'Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window&&!!PUSH_CONFIG();}
 function pushPromptHTML(){
  if(!pushSupported())return '<section class="push-setup"><strong>Mitteilungen</strong><p>Für Push-Mitteilungen diese App auf einem unterstützten Gerät als Web-App installieren (iPhone: Safari → Teilen → Zum Home-Bildschirm) und erneut öffnen.</p></section>';
- if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen und Admin-Nachrichten. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
- return `<section class="push-setup"><strong>Stammtisch-Mitteilungen</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen und Admin-Nachrichten. Es gibt keine Fristerinnerungen.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 Mitteilungen erlauben</button><p class="push-status">${Notification.permission==='denied'?'Mitteilungen sind für FantastiX in deinen Geräteeinstellungen blockiert.':''}</p></section>`;
+ if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen, Nachrichten und eingerichteten Abstimmungserinnerungen. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
+ return `<section class="push-setup"><strong>Stammtisch-Mitteilungen</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen und Admin-Nachrichten. Automatische Fristerinnerungen werden vom Administrator eingerichtet.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 Mitteilungen erlauben</button><p class="push-status">${Notification.permission==='denied'?'Mitteilungen sind für FantastiX in deinen Geräteeinstellungen blockiert.':''}</p></section>`;
 }
 // PushManager.subscribe() darf erst nach der Aktivierung des Service Workers laufen.
 // Eine erfolgreiche register()-Antwort allein bedeutet NICHT, dass er schon aktiv ist.
@@ -377,9 +391,18 @@ async function activePushRegistration(){
  if(!registration.active||registration.active.state!=='activated')throw Error('Kein aktiver Service Worker. Bitte die App neu öffnen.');
  return registration;
 }
+// Separate reminder registration leaves the existing push sender untouched.
+async function registerReminderSubscription(sub){
+ try{const {error}=await cloud.rpc('fantastix_reminder_subscribe',{p_subscription:sub.toJSON()});
+ if(error)console.warn('Fristerinnerungen noch nicht eingerichtet:',error.code||'RPC');}catch{console.warn('Erinnerungsregistrierung vorübergehend nicht erreichbar.');}
+}
+async function unregisterReminderSubscription(sub){
+ try{const {error}=await cloud.rpc('fantastix_reminder_unsubscribe',{p_endpoint:sub.endpoint});
+ if(error)console.warn('Erinnerungs-Abmeldung:',error.code||'RPC');}catch{console.warn('Erinnerungs-Abmeldung vorübergehend nicht erreichbar.');}
+}
 async function detectPushSubscription(){
  if(!pushSupported()||!user||!profile?.member_id)return;
- try{const reg=await activePushRegistration();const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
+ try{const reg=await activePushRegistration();const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;await registerReminderSubscription(sub);}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
  if(tab==='dashboard'&&data)renderApp();
 }
 async function enablePush(){
@@ -397,6 +420,7 @@ async function enablePush(){
   if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapid});
   const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});
   if(error)throw error;
+  await registerReminderSubscription(sub);
   pushEnabled=true;alert('Mitteilungen sind aktiviert.');
  }catch(e){const message=e.message||String(e);alert('Push-Aktivierung fehlgeschlagen: '+message+'\nFalls der Service Worker noch nicht aktiv ist: FantastiX aktualisieren, die installierte Home-Bildschirm-App schließen und neu öffnen. Falls die Anmeldung in Supabase fehlschlägt: Push-SQL und Edge-Funktion prüfen.');}
  finally{pushBusy=false;renderApp();}
@@ -404,7 +428,7 @@ async function enablePush(){
 async function disablePush(){
  if(!cloud||!user)return;
  try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
-  if(sub){const {error}=await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});if(error)throw error;await sub.unsubscribe();}
+  if(sub){const {error}=await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});if(error)throw error;await unregisterReminderSubscription(sub);await sub.unsubscribe();}
   pushEnabled=false;renderApp();
  }catch(e){alert('Deaktivieren fehlgeschlagen: '+(e.message||String(e)));}
 }
@@ -490,7 +514,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;

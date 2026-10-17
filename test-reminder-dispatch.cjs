@@ -1,0 +1,35 @@
+const assert=require('node:assert/strict'),path=require('node:path'),vm=require('node:vm'),fs=require('node:fs');
+(async()=>{
+ const {createReminderHandler,allowedPushEndpoint}=await import('./supabase/functions/fantastix-reminders/dispatch.mjs');
+ for(const host of ['fcm.googleapis.com','updates.push.services.mozilla.com','web.push.apple.com','a.notify.windows.com'])assert.equal(allowedPushEndpoint('https://'+host+'/path'),true);
+ for(const url of ['http://fcm.googleapis.com/x','https://localhost/x','https://169.254.169.254/','https://fcm.googleapis.com.evil.test/x','https://user@fcm.googleapis.com/x','https://fcm.googleapis.com:444/x'])assert.equal(allowedPushEndpoint(url),false);
+ const now=Date.now(),token='A'.repeat(48),calls=[],sent=[];
+ let jobs=[{id:1,lease_token:'lease',deadline_at:new Date(now+200000).toISOString(),subscription:{endpoint:'https://fcm.googleapis.com/test'},payload:{kind:'vote_reminder'}}];
+ const rpc=async(name,args)=>{calls.push({name,args});return name==='fantastix_reminder_claim'?jobs:null;};
+ const handler=createReminderHandler({token,rpc,now:()=>now,sendPush:async(sub,payload,options)=>{sent.push({sub,payload,options});return 201;}});
+ const request=(secret=token)=>new Request('https://worker.test',{method:'POST',headers:{'x-reminder-token':secret}});
+ assert.equal((await handler(new Request('https://worker.test'))).status,405);
+ assert.equal((await handler(request('wrong'))).status,401);assert.equal(calls.length,0);
+ assert.equal((await createReminderHandler({token:'',rpc})(request(''))).status,503);
+ assert.equal((await handler(request())).status,200);assert.equal(sent.length,1);assert.equal(sent[0].options.TTL,200);
+ assert.equal(calls.at(-1).args.p_status,201);
+ jobs=[{...jobs[0],deadline_at:new Date(now-1).toISOString()}];await handler(request());assert.equal(sent.length,1);assert.equal(calls.at(-1).args.p_status,0);
+ jobs=[{...jobs[0],deadline_at:new Date(now+200000).toISOString(),subscription:{endpoint:'https://localhost/private'}}];await handler(request());assert.equal(sent.length,1);assert.equal(calls.at(-1).args.p_status,400);
+ jobs=[{...jobs[0],subscription:{endpoint:'https://fcm.googleapis.com/test'}}];
+ const fail=createReminderHandler({token,rpc,now:()=>now,sendPush:async()=>{throw Error('network');}});
+ await fail(request());assert.equal(calls.at(-1).args.p_status,503);
+ const badDB=createReminderHandler({token,rpc:async()=>{throw Error('db')},sendPush:async()=>201});assert.equal((await badDB(request())).status,500);
+ // Encrypt a real-format payload with the pinned push library, without HTTP.
+ const dep=name=>require(process.env.FANTASTIX_TEST_DEPS?path.join(process.env.FANTASTIX_TEST_DEPS,name):name);
+ const webpush=dep('web-push'),crypto=require('node:crypto'),ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();
+ const vapid=webpush.generateVAPIDKeys();
+ const details=webpush.generateRequestDetails({endpoint:'https://fcm.googleapis.com/test',keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:crypto.randomBytes(16).toString('base64url')}},JSON.stringify({kind:'vote_reminder'}),{vapidDetails:{subject:'mailto:test@example.com',...vapid},TTL:200});
+ assert.equal(details.headers['Content-Encoding'],'aes128gcm');assert.ok(details.body.length>0);
+ const events={},notifications=[];
+ const sw=vm.createContext({Date,self:{addEventListener:(name,fn)=>events[name]=fn,registration:{showNotification:async(...args)=>notifications.push(args)}}});
+ vm.runInContext(fs.readFileSync(__dirname+'/service-worker.js','utf8'),sw);
+ let pending;events.push({data:{json:()=>({kind:'vote_reminder',body:'Bitte abstimmen',deadlineAt:new Date(now+200000).toISOString()})},waitUntil:p=>pending=p});await pending;
+ assert.equal(notifications.length,1);assert.equal(notifications[0][1].data.tab,'meetings');
+ events.push({data:{json:()=>({kind:'vote_reminder',deadlineAt:'2000-01-01T00:00:00Z'})},waitUntil(){}});assert.equal(notifications.length,1,'Expired notifications are suppressed');
+ console.log('PASS reminder dispatcher: authentication, endpoint validation, TTL/expiry, retry reporting, VAPID encryption and actual service-worker notification display.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
