@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.17.0";
+const APP_VERSION = window.FX_VERSION || "3.18.0";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -59,6 +59,7 @@ function validateBackup(v){
 }
 
 function loadData(){try{const raw=localStorage.getItem(DATA_KEY);return raw?assertData(JSON.parse(raw)):DEFAULT();}catch(err){alert('Gespeicherte Daten konnten nicht geladen werden. Bitte keine neuen Daten speichern, bevor eine Sicherung geprüft wurde.');return DEFAULT();}}
+let adminEntry=null;
 let calendarMonth=today().slice(0,7), calendarSelected=today(), birthdays=[];
 let data=loadData(), page='home', rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
 let snapshotStatus='Noch keine automatische lokale Sicherung', snapshotCount=0, snapshotError=false;
@@ -190,7 +191,7 @@ async function fxMarkAlerts(id=null){
  if($('#dialog')?.open)modal('Benachrichtigungen',fxInboxHTML());render();
  if(problems.length)alert('Ein Teil der Meldungen konnte nicht als gelesen markiert werden: '+problems.join(' | '));
 }
-function render(){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<header class="top fx-admin-header"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div class="fx-admin-brand-text"><strong>FantastiX</strong><small>Adminmodus · Version ${APP_VERSION}</small></div></div><div class="fx-cloud-head"><button class="fx-cloud-badge" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button>${fxAlertButton()}</div></header>${renderers[page]()}`;}
+function render(force=false){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');if(adminEntry&&!force&&$('#admin-entry'))return;const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<header class="top fx-admin-header"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div class="fx-admin-brand-text"><strong>FantastiX</strong><small>Adminmodus · Version ${APP_VERSION}</small></div></div><div class="fx-cloud-head"><button class="fx-cloud-badge" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button>${fxAlertButton()}</div></header>${adminEntry?adminEntryHTML():renderers[page]()}`;}
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
 function homeHTML(){
@@ -227,17 +228,18 @@ function memberLastOnline(id){
  const d=new Date(raw);return Number.isFinite(d.getTime())?'Zuletzt online: '+new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)+' Uhr':'Zuletzt online: Unbekannt';
 }
 function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card">${members.length?`<div class="list">${members.map(m=>`<div class="item">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<div class="details"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small class="member-last-online">${esc(memberLastOnline(m.id))}</small></div><button class="smallbtn" data-action="member-edit" data-id="${m.id}">Bearbeiten</button></div>`).join('')}</div>`:empty('👥','Noch keine Mitglieder')}</div>`;}
+function adminCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
 function meetingsHTML(){
-  const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date)),next=suggestedOrganizer(today());
-  return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
-  <div class="notice">Nächster Organisator: <strong>${next?`Nr. ${memberNo(next)} · ${esc(next.name)}`:'–'}</strong></div>
-  <div class="card">${meetings.length?`<div class="list">${meetings.map(m=>{const a=data.members.map(person=>effectiveAttendance(m,person.id)).filter(Boolean),organizer=member(m.organizerId);return `<div class="item"><div class="avatar">${esc(String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0'))}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Kein Gasthaus')} · ${organizer?`Organisator: ${esc(organizer.name)}`:'Organisator offen'}<br>${a.filter(x=>x.status==='present').length} Dabei · ${a.filter(x=>x.status==='absent').length} Nicht dabei · ${data.members.filter(p=>p.active!==false&&!effectiveAttendance(m,p.id)).length} offen</small></div><span class="chip ${doneMeeting(m)?'':'gray'}">${doneMeeting(m)?'Vergangen':'Geplant'}</span><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`}).join('')}</div>`:empty('📅','Keine Stammtische')}</div>`;
+ const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date)),next=suggestedOrganizer(today());
+ return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
+ <div class="notice">Nächster Organisator: <strong>${next?`Nr. ${memberNo(next)} · ${esc(next.name)}`:'–'}</strong></div>
+ <section class="card reader-entry-list">${meetings.map(m=>{const entries=data.members.map(p=>effectiveAttendance(m,p.id)).filter(Boolean);return `<button type="button" class="reader-entry" data-action="meeting-edit" data-id="${esc(m.id)}" aria-label="Stammtisch am ${esc(fmtDate(m.date))} öffnen"><span class="reader-entry-info"><strong>${fmtDate(m.date)} · ${esc(m.time||'18:30')} Uhr</strong><span>${esc(m.location||'Gasthaus noch offen')}</span><small>Organisator: ${esc(member(m.organizerId)?.name||'Mitglied')}</small>${adminCountSummary({yes:entries.filter(x=>x.status==='present').length,no:entries.filter(x=>x.status==='absent').length,open:data.members.filter(p=>p.active!==false&&!effectiveAttendance(m,p.id)).length})}</span><span class="reader-entry-end"><span class="chip gray">${m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen'}</span><span>Öffnen ›</span></span></button>`;}).join('')||'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
 }
 function calendarHTML(){return `${pageHead('','Kalender','Stammtische, Events und Geburtstage.')}${window.FantastiXCalendar.render({...data,birthdays:birthdays.map(b=>({...b,name:member(b.member_id)?.name||'Mitglied'}))},calendarMonth,calendarSelected,true)}`;}
 function excursionsHTML(){
  const list=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
  return `${pageHead('','Events','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Event planen</button></div>
- <div class="card">${list.length?`<div class="list">${list.map(x=>{const c=excursionVoteCounts(x.id);return `<div class="item"><div class="avatar">✈</div><div class="details"><strong>${esc(x.title)}</strong><small>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</small><small style="display:block;margin-top:3px">Organisatoren: ${esc(excursionOrganizers(x))}</small><small style="display:block;margin-top:3px">${c.yes} Zusagen · ${c.no} Absagen${x.completed?' · Abgeschlossen':''}</small></div><button class="smallbtn" data-action="excursion-edit" data-id="${esc(x.id)}">Öffnen</button></div>`;}).join('')}</div>`:empty('🧭','Noch keine Events')}</div>
+ <section class="card reader-entry-list">${list.map(x=>`<button type="button" class="reader-entry" data-action="excursion-edit" data-id="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(excursionOrganizers(x))}</small>${adminCountSummary(excursionVoteCounts(x.id))}</span><span class="reader-entry-end">${x.completed?'<span class="chip gray">Abgeschlossen</span>':''}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>
  <p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
 }
 function excursionForm(id){
@@ -259,7 +261,7 @@ function excursionForm(id){
     ${[['yes','✓ Dabei'],['no','× Nicht dabei'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
  }).join('')}</div>`:'';
- modal(id?'Event bearbeiten':'Event planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
+ openAdminEntry(id?'Event bearbeiten':'Event planen',`<form data-form="excursion"><input type="hidden" name="id" value="${esc(x.id)}">
  <div class="field"><label>Bezeichnung *</label><input name="title" maxlength="120" value="${esc(x.title)}" placeholder="z. B. Hüttenwochenende" required></div>
  <div class="field"><label>Beginn (optional)</label><input type="date" name="date" value="${esc(x.date||'')}"></div>
  <div class="field"><label>Ende (bei mehreren Tagen)</label><input type="date" name="endDate" value="${esc(x.endDate||'')}"></div>
@@ -268,11 +270,11 @@ function excursionForm(id){
  <div class="field"><label>Organisatoren (mehrere möglich)</label><div class="organizer-grid">${[...data.members].sort(byMemberNo).map(m=>`<label class="organizer-option"><input type="checkbox" name="organizerIds" value="${esc(m.id)}" ${x.organizerIds?.includes(m.id)?'checked':''}><span>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</span></label>`).join('')||'<p class="muted">Noch keine Mitglieder vorhanden</p>'}</div></div>
  <div class="field"><label>Weitere Organisatoren (optional)</label><input name="organizerOther" maxlength="200" value="${esc(x.organizerOther||'')}" placeholder="Namen, durch Komma getrennt"></div>
  <div class="field"><label class="organizer-option"><input type="checkbox" name="completed" ${x.completed?'checked':''}><span>Event abgeschlossen</span></label></div>
- ${footer('Event speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="excursion-delete" data-id="${esc(x.id)}">Event löschen</button>`:''}</form>${voteHTML}`);
+ ${footer('Event speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="excursion-delete" data-id="${esc(x.id)}">Event löschen</button>`:''}</form>${voteHTML}`,'excursion',id);
 }
 function mineFirst(m,memberId){return Boolean(memberId&&m.id===memberId);}
 function updateExcursionVoteControls(id){
- const dialog=$('#dialog');if(!dialog?.open)return;
+ const dialog=adminEditorRoot();if(!dialog)return;
  const form=dialog.querySelector('form[data-form="excursion"]');if(!form||form.elements.id.value!==id)return;
  const selected=excursionVotes.filter(v=>v.excursion_id===id);
  const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} dabei / ${selected.filter(v=>v.status==='no').length} nicht dabei`;
@@ -289,7 +291,7 @@ async function adminExcursionVote(excursionId,memberId,status){
  if(!cloudReady||!cloudClient||!cloudUser)return alert('Bitte zuerst als Administrator mit der Cloud verbinden.');
  if(excursionVoteWarning)return alert('Eventsabstimmungen sind nicht verfügbar: '+excursionVoteWarning);
  if(!['yes','no','clear'].includes(status)||!member(memberId)||!(data.excursions||[]).some(x=>x.id===excursionId))return;
- const dialog=$('#dialog'),buttons=[...(dialog?.querySelectorAll('[data-action="excursion-admin-vote"]')||[])];
+ const dialog=adminEditorRoot(),buttons=[...(dialog?.querySelectorAll('[data-action="excursion-admin-vote"]')||[])];
  buttons.forEach(b=>b.disabled=true);
  try{
   const {error}=await cloudClient.rpc('fantastix_excursion_admin_vote',{p_excursion_id:excursionId,p_member_id:memberId,p_status:status});
@@ -325,7 +327,7 @@ function finesHTML(){
  ${entries.length?`<div class="list">${entries.map(t=>`<div class="item"><div class="details"><strong>${t.type==='monthly'?'Monatsbeiträge '+esc(t.month):t.type==='expense'?'Ausgabe':t.type==='adjustment'?'Kontostand angepasst':'Strafe bezahlt'}</strong><small>${esc(t.note||'')}${t.type==='monthly'?` · ${t.memberCount} × ${money(t.perMemberCents)}`:''}</small></div><div class="right"><strong class="cash-amount ${t.amountCents<0?'negative':'positive'}">${t.amountCents>0?'+':''}${money(t.amountCents)}</strong>${t.type==='expense'||t.type==='adjustment'?`<div><button class="smallbtn" data-action="cash-reverse" data-id="${t.id}">Stornieren</button></div>`:''}</div></div>`).join('')}</div>`:empty('📒','Noch keine Buchungen')}</section>
  <div class="toolbar"><button class="button" data-action="fine-new">+ Strafe</button></div>
  <div class="card"><h2>Offene Strafen pro Mitglied</h2>${data.members.length?`<div class="list">${[...data.members].sort((a,b)=>{const aa=data.fines.filter(f=>f.memberId===a.id).reduce((s,f)=>s+fineOpen(f),0),bb=data.fines.filter(f=>f.memberId===b.id).reduce((s,f)=>s+fineOpen(f),0);return bb-aa||byName(a,b)}).map(m=>{const mf=fines.filter(f=>f.memberId===m.id),open=mf.reduce((s,f)=>s+fineOpen(f),0);return `<div class="item"><div class="avatar">${esc(initials(m.name))}</div><div class="details"><strong>${esc(m.name)}</strong><small>${mf.length} Strafen</small></div><span class="number ${open?'':'muted'}">${money(open)}</span></div>`}).join('')}</div>`:empty('💶','Noch keine Mitglieder')}</div>
- <div class="card"><h2>Einzelne Strafen</h2>${fines.length?`<div class="list">${fines.map(f=>{const open=fineOpen(f);return `<div class="item"><div class="details"><strong>${esc(member(f.memberId)?.name||'(gelöschtes Mitglied)')}</strong><small>${esc(f.reason)}</small></div><div class="right"><span class="chip ${open?'red':''}">${open?money(open)+' offen':'Bezahlt'}</span><div style="margin-top:6px">${open?`<button class="smallbtn" data-action="fine-pay" data-id="${f.id}">Kassieren</button>`:''} <button class="smallbtn" data-action="fine-view" data-id="${f.id}">Details</button></div></div></div>`}).join('')}</div>`:empty('🧾','Noch keine Strafen')}</div>`;
+ <div class="card"><h2>Einzelne Strafen</h2>${fines.length?`<div class="list">${fines.map(f=>{const open=fineOpen(f);return `<div class="item"><div class="details"><strong>${esc(member(f.memberId)?.name||'(gelöschtes Mitglied)')}</strong><small>${esc(f.reason)}</small><small class="fine-date">Erfasst am: ${fmtDate(f.date)}</small></div><div class="right"><span class="chip ${open?'red':''}">${open?money(open)+' offen':'Bezahlt'}</span><div style="margin-top:6px">${open?`<button class="smallbtn" data-action="fine-pay" data-id="${f.id}">Kassieren</button>`:''} <button class="smallbtn" data-action="fine-view" data-id="${f.id}">Details</button></div></div></div>`}).join('')}</div>`:empty('🧾','Noch keine Strafen')}</div>`;
 }
 function cashBalanceForm(){modal('Kontostand ändern',`<form data-form="cash-balance"><p class="hint">Der neue Betrag wird als Korrekturbuchung erfasst.</p><div class="field"><label>Neuer Kontostand (€)</label><input name="balance" inputmode="decimal" type="text" value="${euroInput(accountBalance())}" required></div><div class="field"><label>Notiz</label><input name="note" maxlength="180" placeholder="Optional"></div>${footer('Kontostand speichern')}</form>`);}
 function cashExpenseForm(){modal('Ausgabe buchen',`<form data-form="cash-expense"><div class="field"><label>Betrag (€)</label><input name="amount" inputmode="decimal" type="text" placeholder="z. B. 25,00" required></div><div class="field"><label>Verwendungszweck</label><input name="note" maxlength="180" placeholder="z. B. Stammtisch-Abend" required></div>${footer('Ausgabe buchen')}</form>`);}
@@ -424,6 +426,19 @@ async function loadBirthdaysAdmin(){
  birthdays=rows||[];if(page==='calendar')render();
 }
 function modal(title,html){$('#dialog').innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${title}</h2><button type="button" class="close" data-action="close" aria-label="Schließen">×</button></div>${html}</div>`;$('#dialog').showModal();}
+function adminEntryHTML(){return `<button type="button" class="smallbtn reader-entry-back" data-action="admin-entry-back">← Zurück</button>${pageHead('',esc(adminEntry.title),'')}<section class="card admin-entry" id="admin-entry">${adminEntry.html}</section>`;}
+function adminEditorRoot(){return $('#admin-entry')||$('#dialog');}
+function openAdminEntry(title,html,kind,id){
+ const from=adminEntry?.from||page;
+ adminEntry={title,html,kind,id:id||'',from,dirty:false};
+ page=kind==='meeting'?'meetings':'excursions';render(true);
+ window.scrollTo({top:0,behavior:'instant'});
+}
+function leaveAdminEntry(){
+ if(!adminEntry)return true;
+ if(adminEntry.dirty&&!confirm('Ungespeicherte Änderungen verwerfen und zurückgehen?'))return false;
+ closeModal();window.scrollTo({top:0,behavior:'instant'});return true;
+}
 const footer = (label='Speichern')=>`<div class="foot"><button type="button" class="ghost" data-action="close">Abbrechen</button><button class="button" type="submit">${label}</button></div>`;
 function memberForm(id){
  const m=member(id)||{id:'',name:'',memberNumber:null,historicalCount:0,historical2026Count:0,active:true};
@@ -439,7 +454,7 @@ function meetingForm(id){
  const attendanceMembers=[...data.members].filter(person=>person.active!==false||Object.hasOwn(m.attendance||{},person.id)).sort(byMemberNo);
  const organizerMembers=[...data.members].filter(person=>person.active!==false||person.id===m.organizerId).sort(byMemberNo);
  const proposed=m.organizerId||(suggestedOrganizer(m.date,m.id)?.id||'');
- modal(id?'Stammtisch bearbeiten':'Neuer Stammtisch',`<form data-form="meeting"><input type="hidden" name="id" value="${esc(m.id)}">
+ openAdminEntry(id?'Stammtisch bearbeiten':'Neuer Stammtisch',`<form data-form="meeting"><input type="hidden" name="id" value="${esc(m.id)}">
  <div class="field"><label>Datum</label><input type="date" name="date" value="${esc(m.date)}" required></div>
  <div class="field"><label>Uhrzeit</label><input type="time" name="time" value="${esc(m.time||'18:30')}" required></div>
  <div class="field"><label>Gasthaus</label><input name="location" maxlength="120" value="${esc(m.location)}" placeholder="Gasthaus auswählen oder eingeben" style="width:100%"></div>
@@ -448,7 +463,7 @@ function meetingForm(id){
  <h3>Anwesenheit</h3>
  ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present">✓ Dabei</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent">× Nicht dabei</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${entry.status==='present'&&entry.note?`<div class="field" style="margin:8px 0"><small class="muted">Notiz des Mitglieds: ${esc(entry.note)}</small></div>`:''}${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}</div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${id?'<div id="member-cloud-notes" class="notice">Mitgliedernotizen werden geladen …</div>':''}
- ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`);
+ ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`,'meeting',id);
  if(id)loadAdminMeetingNotes(id);
 }
 async function loadAdminMeetingNotes(id){
@@ -461,7 +476,7 @@ async function loadAdminMeetingNotes(id){
 }
 function fineForm(){
  if(!data.members.length)return alert('Bitte lege zuerst ein Mitglied an.');
- modal('Strafe eintragen',`<form data-form="fine"><div class="field"><label>Mitglied</label><select name="memberId" required>${[...data.members].sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Betrag (€)</label><input name="amount" type="text" inputmode="decimal" placeholder="5,00" required></div><div class="field"><label>Grund</label><input name="reason" maxlength="300" placeholder="z. B. Zu spät gekommen" required></div>${footer('Strafe erfassen')}</form>`);
+ modal('Strafe eintragen',`<form data-form="fine"><div class="field"><label>Mitglied</label><select name="memberId" required>${[...data.members].sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Betrag (€)</label><input name="amount" type="text" inputmode="decimal" placeholder="5,00" required></div><div class="field"><label>Grund</label><input name="reason" maxlength="300" placeholder="z. B. Zu spät gekommen" required></div><p class="hint">Erfassungsdatum: ${fmtDate(today())} · wird beim Speichern automatisch gesetzt.</p>${footer('Strafe erfassen')}</form>`);
 }
 function payForm(id){
  const f=data.fines.find(x=>x.id===id);if(!f)return;const open=fineOpen(f);
@@ -470,9 +485,9 @@ function payForm(id){
 function fineView(id){
  const f=data.fines.find(x=>x.id===id);if(!f)return;
  const payments=data.payments.filter(p=>p.fineId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
- modal('Strafendetails',`<div class="stack"><div><label>Mitglied</label><strong>${esc(member(f.memberId)?.name||'Unbekannt')}</strong></div><div><label>Grund</label><strong>${esc(f.reason)}</strong></div><div class="row"><div><label>Gesamtbetrag</label><strong>${money(f.amountCents)}</strong></div><div class="right"><label>Offen</label><strong>${money(fineOpen(f))}</strong></div></div></div><div class="separator"></div><h3>Zahlungen</h3>${payments.length?payments.map(p=>`<div class="item"><div class="details"><strong>${money(p.amountCents)}</strong><small>${esc(p.method||'Bar')} ${p.note?`· ${esc(p.note)}`:''}</small></div><button class="smallbtn" data-action="payment-delete" data-id="${p.id}">Stornieren</button></div>`).join(''):empty('🧾','Noch keine Zahlung')}<div class="foot">${fineOpen(f)?`<button class="button" data-action="fine-pay" data-id="${f.id}">Zahlung erfassen</button>`:''}<button class="ghost" data-action="close">Schließen</button></div>${payments.length?'':'<div class="separator"></div><button class="danger-btn" data-action="fine-delete" data-id="'+f.id+'">Unbezahlte Strafe löschen</button>'}`);
+ modal('Strafendetails',`<div class="stack"><div><label>Mitglied</label><strong>${esc(member(f.memberId)?.name||'Unbekannt')}</strong></div><div><label>Erfasst am</label><strong>${fmtDate(f.date)}</strong></div><div><label>Grund</label><strong>${esc(f.reason)}</strong></div><div class="row"><div><label>Gesamtbetrag</label><strong>${money(f.amountCents)}</strong></div><div class="right"><label>Offen</label><strong>${money(fineOpen(f))}</strong></div></div></div><div class="separator"></div><h3>Zahlungen</h3>${payments.length?payments.map(p=>`<div class="item"><div class="details"><strong>${money(p.amountCents)}</strong><small>${esc(p.method||'Bar')} ${p.note?`· ${esc(p.note)}`:''}</small></div><button class="smallbtn" data-action="payment-delete" data-id="${p.id}">Stornieren</button></div>`).join(''):empty('🧾','Noch keine Zahlung')}<div class="foot">${fineOpen(f)?`<button class="button" data-action="fine-pay" data-id="${f.id}">Zahlung erfassen</button>`:''}<button class="ghost" data-action="close">Schließen</button></div>${payments.length?'':'<div class="separator"></div><button class="danger-btn" data-action="fine-delete" data-id="'+f.id+'">Unbezahlte Strafe löschen</button>'}`);
 }
-function attStatus(id,status){const root=$('#dialog');const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');}
+function attStatus(id,status){const root=adminEditorRoot();const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;if(adminEntry)adminEntry.dirty=true;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');}
 function saveMember(fd){
  const id=String(fd.get('id')||''),name=String(fd.get('name')||'').trim(),rawNo=String(fd.get('memberNumber')||'').trim(),number=rawNo===''?null:Number(rawNo);
  if(!name)return alert('Bitte einen Namen eingeben.');
@@ -523,8 +538,8 @@ function saveMeeting(fd){
  if(id)data.meetings=data.meetings.map(m=>m.id===id?record:m);else data.meetings.push(record);
  data.fines=data.fines.filter(f=>!(f.meetingId===mtId&&f.source==='absence'&&attendance[f.memberId]?.status!=='absent'));
  for(const item of fineChanges){const existingFine=data.fines.find(f=>f.meetingId===mtId&&f.memberId===item.memberId&&f.source==='absence');
-   if(existingFine){if(item.amount>0){existingFine.amountCents=item.amount;existingFine.reason=`Abwesenheit: ${item.reason||'ohne Angabe'}`;existingFine.date=date;}else if(!finePaid(existingFine.id)){data.fines=data.fines.filter(f=>f.id!==existingFine.id);}}
-   else if(item.amount>0){data.fines.push({id:uid(),memberId:item.memberId,meetingId:mtId,source:'absence',date,reason:`Abwesenheit: ${item.reason||'ohne Angabe'}`,amountCents:item.amount});}
+   if(existingFine){if(item.amount>0){existingFine.amountCents=item.amount;existingFine.reason=`Abwesenheit: ${item.reason||'ohne Angabe'}`;}else if(!finePaid(existingFine.id)){data.fines=data.fines.filter(f=>f.id!==existingFine.id);}}
+   else if(item.amount>0){data.fines.push({id:uid(),memberId:item.memberId,meetingId:mtId,source:'absence',date:today(),reason:`Abwesenheit: ${item.reason||'ohne Angabe'}`,amountCents:item.amount});}
  }
  closeModal();persist();
 }
@@ -644,7 +659,7 @@ async function revokeNotice(id){
  if(error)return alert('Zurückziehen fehlgeschlagen: '+error.message);
  await manageNotices();
 }
-function closeModal(){if($('#dialog').open)$('#dialog').close();}
+function closeModal(){if($('#dialog').open){$('#dialog').close();return;}if(adminEntry){const from=adminEntry.from;adminEntry=null;page=from;render();}}
 function download(content,name,mime){const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);}
 function exportJSON(){download(JSON.stringify(data,null,2),`FantastiX_Backup_${today()}.json`,'application/json;charset=utf-8');}
 async function shareJSON(){const filename=`FantastiX_Backup_${today()}.json`;const file=new File([JSON.stringify(data,null,2)],filename,{type:'application/json'});try{if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:'FantastiX Datensicherung'});return;}exportJSON();alert('Dein Browser hat die Sicherung heruntergeladen. Bitte speichere sie über die Dateien-App manuell unter iCloud Drive.');}catch(e){if(e.name!=='AbortError')alert('Teilen fehlgeschlagen: '+(e.message||String(e)));}}
@@ -803,7 +818,7 @@ function publicSnapshot(opts){
  const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
  const members=(allowMembers||opts.excursions)?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,...(allowMembers?{historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)}:{})})):[];
  const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'18:30',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>v?.status==='present'||v?.status==='absent').map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,note:v.status==='present'?v.note||'':'',source:v.source||'admin'}]))})):[];
- const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
+ const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,date:f.date||'',reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyDay:cash().monthlyDay||1,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
  const excursions=opts.excursions?(data.excursions||[]).map(x=>({id:x.id,title:x.title,date:x.date||'',endDate:x.endDate||'',location:x.location||'',notes:x.notes||'',organizerIds:(x.organizerIds||[]).filter(id=>!!member(id)),organizerOther:x.organizerOther||'',completed:x.completed===true})):[];
@@ -840,8 +855,8 @@ async function unpublishPublic(){
 document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
- const action=el.dataset.action,id=el.dataset.id;if(action==='fx-new-read'){fxReadNew(Number(id));return;}if(action==='fx-new-read-all'){fxReadNew();return;}if(el.dataset.page){page=el.dataset.page;render();if(page==='members')loadOnlinePresenceAdmin().catch(console.warn);window.scrollTo({top:0,behavior:'instant'});return;}
- switch(action){case'fx-inbox':await fxOpenInbox();break;case'fx-read':await fxMarkAlerts(Number(id));break;case'fx-new-read':await fxReadNew(Number(id));break;case'fx-read-all':await fxMarkAlerts(null);break;case'close':closeModal();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
+ const action=el.dataset.action,id=el.dataset.id;if(action==='fx-new-read'){fxReadNew(Number(id));return;}if(action==='fx-new-read-all'){fxReadNew();return;}if(el.dataset.page){if(!leaveAdminEntry())return;page=el.dataset.page;render();if(page==='members')loadOnlinePresenceAdmin().catch(console.warn);window.scrollTo({top:0,behavior:'instant'});return;}
+ switch(action){case'fx-inbox':await fxOpenInbox();break;case'fx-read':await fxMarkAlerts(Number(id));break;case'fx-new-read':await fxReadNew(Number(id));break;case'fx-read-all':await fxMarkAlerts(null);break;case'close':if($('#dialog').open)closeModal();else leaveAdminEntry();break;case'admin-entry-back':leaveAdminEntry();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
  case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Event endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();
  if(!navigator.onLine||!cloudUser||!cloudReady)alert('Lokal gelöscht. Im Mitgliederportal verschwindet der Stammtisch, sobald dein Gerät wieder online ist und der neue Cloud-Stand synchronisiert wurde.');
@@ -857,7 +872,7 @@ document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest
  case'cloud-logout':if(cloudClient&&confirm('Administrator abmelden? Lokale Daten bleiben auf diesem Gerät.')){await cloudClient.auth.signOut();cloudUser=null;cloudReady=false;cloudStatus='local';syncMessage='Abgemeldet';closeModal();render();}break;
  }
 });
-$('#dialog').addEventListener('submit',async ev=>{ev.preventDefault();const form=ev.target,fd=new FormData(form);switch(form.dataset.form){case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'excursion':saveExcursion(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-auth':await cloudAuth(fd);break;
+document.addEventListener('submit',async ev=>{const form=ev.target;if(!form.matches('form[data-form]'))return;ev.preventDefault();const fd=new FormData(form);switch(form.dataset.form){case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'excursion':saveExcursion(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-auth':await cloudAuth(fd);break;
  case'notice-create':await saveNotice(fd);break;case'reader-access':await saveReaderAccess(fd);break;case'vote-settings':saveVoteSettings(fd);break;case'public-settings':{
   const opts={members:fd.has('members'),meetings:fd.has('meetings'),excursions:fd.has('excursions'),absences:fd.has('absences')&&fd.has('meetings'),fines:fd.has('fines'),cash:fd.has('cash'),auto:fd.has('auto')};
   if(!opts.members&&!opts.meetings&&!opts.excursions&&!opts.fines&&!opts.cash){alert('Bitte mindestens einen Datenbereich auswählen.');break;}
@@ -868,7 +883,8 @@ $('#dialog').addEventListener('submit',async ev=>{ev.preventDefault();const form
   catch(e){alert('Veröffentlichen fehlgeschlagen: '+e.message);}
   break;
  }}});
-document.addEventListener('change',async e=>{const t=e.target;if(t?.id==='admin-ranking-year'){rankYear=t.value;render();return;}if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
+document.addEventListener('input',e=>{if(adminEntry&&e.target.closest('#admin-entry form'))adminEntry.dirty=true;});
+document.addEventListener('change',async e=>{const t=e.target;if(adminEntry&&t.closest('#admin-entry form'))adminEntry.dirty=true;if(t?.id==='admin-ranking-year'){rankYear=t.value;render();return;}if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
  const file=e.target.files?.[0];if(!file)return;
  try{
   if(file.size>10*1024*1024)throw Error('Die Sicherung ist größer als 10 MB.');
@@ -881,9 +897,9 @@ document.addEventListener('change',async e=>{const t=e.target;if(t?.id==='admin-
  }catch(err){alert('Import nicht möglich: '+(err.message||String(err)));}
 });
 // Bei neuen Mitgliederstimmen den zentralen Datenstand regelmäßig übernehmen.
-setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser&&!cloudDirty&&!$('#dialog').open&&!cloudBusy&&!cloudSaving)syncCloud(true);},60000);
-window.addEventListener('online',()=>{if(cloudUser)syncCloud()});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){postMonthlyContributions();if(cloudUser)syncCloud();}});
+setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser&&!cloudDirty&&!$('#dialog').open&&!adminEntry&&!cloudBusy&&!cloudSaving)syncCloud(true);},60000);
+window.addEventListener('online',()=>{if(cloudUser&&!adminEntry)syncCloud()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){postMonthlyContributions();if(cloudUser&&!adminEntry)syncCloud();}});
 if(ensureCashbook(data)){try{localStorage.setItem(DATA_KEY,JSON.stringify(data));}catch(e){console.warn('Kassa-Migration konnte nicht gesichert werden:',e);}}
 postMonthlyContributions();render();readSnapshots().then(v=>{snapshotCount=v.length;if(v.length){snapshotStatus='Letzter Sicherungsstand: '+new Date(v[0].savedAt).toLocaleString('de-AT');}else if(data.members.length||data.meetings.length||data.fines.length||data.payments.length){queueSnapshot(data);}if(page==='settings')render();}).catch(e=>{snapshotError=true;snapshotStatus='Lokale Sicherung nicht verfügbar: '+(e.message||String(e));});if(getCloudConfig())connectCloud();
 if('serviceWorker'in navigator && window.isSecureContext){navigator.serviceWorker.register('./service-worker.js').catch(console.warn);}
