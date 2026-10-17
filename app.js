@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.19.0";
+const APP_VERSION = window.FX_VERSION || "3.19.1";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -194,6 +194,28 @@ async function fxMarkAlerts(id=null){
 function render(force=false){document.querySelector('#nav').innerHTML=navItems.map(([key,label])=>`<button class="navbutton ${page===key?'active':''}" type="button" data-page="${key}" aria-label="${label}">${icon(key)}<span>${label}</span></button>`).join('');if(adminEntry&&!force&&$('#admin-entry'))return;const renderers={home:homeHTML,meetings:meetingsHTML,excursions:excursionsHTML,calendar:calendarHTML,members:membersHTML,ranking:rankingHTML,fines:finesHTML,settings:settingsHTML};$('#app').innerHTML=`<header class="top fx-admin-header"><div class="brand"><img class="brand-logo" src="./fantastix-logo.png" alt="FantastiX Logo"><div class="fx-admin-brand-text"><strong>FantastiX</strong><small>Adminmodus · Version ${APP_VERSION}</small></div></div><div class="fx-cloud-head"><button class="fx-cloud-badge" data-page="settings" type="button"><span class="status ${cloudStatus==='connected'?'good':''}"></span>${cloudStatus==='connected'?'Cloud aktiv':'Lokal'}</button>${fxAlertButton()}</div></header>${adminEntry?adminEntryHTML():renderers[page]()}`;}
 function pageHead(eyebrow,title,description){return `<div class="eyebrow">${eyebrow}</div><h1 class="title">${title}</h1>${description?`<p class="subtitle">${description}</p>`:''}`;}
 function empty(emoji,text,sub=''){return `<div class="empty"><div class="emoji">${emoji}</div><strong>${text}</strong>${sub?`<p class="hint">${sub}</p>`:''}</div>`;}
+function voteTimeRemaining(deadline,now=Date.now()){
+ const end=Number(deadline);if(deadline===null||deadline===''||!Number.isFinite(end))return 'Abstimmungsfrist nicht verfügbar.';
+ if(end<=now)return 'Abstimmung geschlossen.';
+ let minutes=Math.ceil((end-now)/60000);
+ const days=Math.floor(minutes/1440);minutes%=1440;
+ const hours=Math.floor(minutes/60);minutes%=60;
+ const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} ${hours===1?'Stunde':'Stunden'}`);if(minutes)parts.push(`${minutes} ${minutes===1?'Minute':'Minuten'}`);
+ return `Noch ${parts.length>1?parts.slice(0,-1).join(', ')+' und '+parts.at(-1):parts[0]} Zeit zum Abstimmen.`;
+}
+function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data-vote-deadline="${deadline??''}">${voteTimeRemaining(deadline)}</p>`;}
+function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
+function meetingVoteDeadline(m){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(m?.date||''))return null;
+ const time=/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(m.time||'')?m.time:'18:30';
+ const [y,month,day]=m.date.split('-').map(Number),[h,min]=time.split(':').map(Number);
+ const wall=Date.UTC(y,month-1,day,h,min);
+ const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const localWall=instant=>{const p=Object.fromEntries(fmt.formatToParts(new Date(instant)).map(p=>[p.type,p.value]));return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute);};
+ let instant=wall;for(let i=0;i<3;i++)instant+=wall-localWall(instant);
+ if(localWall(instant)!==wall)return null;
+ return instant-voteDeadlineHours()*3600000;
+}
 function homeHTML(){
  const completed=data.meetings.filter(doneMeeting).sort((a,b)=>b.date.localeCompare(a.date));
  const latest=completed.slice(0,2),next=upcomingMeeting(),days=next?calendarDaysUntil(next.date):null;
@@ -209,7 +231,7 @@ function homeHTML(){
    <div class="metric"><small>Jahresführende ${yearOf(today())}</small>${leaderList(yearBest)}</div>
   </div>
   <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${days===null?'Nicht geplant':days===0?'Heute':`In ${days} Tagen`}</span></div>
-   ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p><p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}
+   ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')}</p>${voteCountdownHTML(meetingVoteDeadline(next))}<p class="muted tiny">✓ ${data.members.filter(person=>person.active!==false&&effectiveAttendance(next,person.id)?.status==='present').length} Zusagen</p><p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="ghost" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}
   </section>
   <section class="card"><h2>Letzte 2 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
   <section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextExcursion()?excursionPeriod(nextExcursion()):'Nicht geplant'}</span></div>
@@ -933,3 +955,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser
 setTimeout(()=>{if(cloudUser){fxLoadAlerts(true);fxLoadNewAlerts().then(()=>render())};},3500);
 
 setInterval(()=>{if(!document.hidden&&cloudReady&&cloudUser)loadOnlinePresenceAdmin().catch(console.warn);},120000);
+
+// Update only the hint, preserving open forms and entered values.
+setInterval(refreshVoteCountdowns,30000);

@@ -118,6 +118,17 @@ function renderApp(){
  const bell=$('#reader-bell');if(bell){const count=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;bell.innerHTML='🔔'+(count?`<b>${count}</b>`:'');}
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
 }
+function voteTimeRemaining(deadline,now=Date.now()){
+ const end=Number(deadline);if(deadline===null||deadline===''||!Number.isFinite(end))return 'Abstimmungsfrist nicht verfügbar.';
+ if(end<=now)return 'Abstimmung geschlossen.';
+ let minutes=Math.ceil((end-now)/60000);
+ const days=Math.floor(minutes/1440);minutes%=1440;
+ const hours=Math.floor(minutes/60);minutes%=60;
+ const parts=[];if(days)parts.push(`${days} ${days===1?'Tag':'Tage'}`);if(hours)parts.push(`${hours} ${hours===1?'Stunde':'Stunden'}`);if(minutes)parts.push(`${minutes} ${minutes===1?'Minute':'Minuten'}`);
+ return `Noch ${parts.length>1?parts.slice(0,-1).join(', ')+' und '+parts.at(-1):parts[0]} Zeit zum Abstimmen.`;
+}
+function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data-vote-deadline="${deadline??''}">${voteTimeRemaining(deadline)}</p>`;}
+function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
 function dashboard(){
  const completed=data.meetings.filter(m=>m.date<=today()).sort((a,b)=>b.date.localeCompare(a.date));
  const next=[...data.meetings].filter(m=>m.date>=today()).sort((a,b)=>a.date.localeCompare(b.date))[0];
@@ -131,7 +142,7 @@ function dashboard(){
   <div class="metric"><small>Jahresführung ${currentYear()}</small>${leaderHTML(yr)}</div>
  </div>
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
- ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button></div>`:`<button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button>`}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
+ ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p>${voteCountdownHTML(deadlines.has(next.id)?new Date(deadlines.get(next.id)).getTime():null)}<p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button></div>`:`<button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button>`}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-reader-excursion="${esc(nextTrip().id)}" type="button">Öffnen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  ${strongestStreakHTML()}`;
@@ -588,3 +599,5 @@ setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
 
 setInterval(()=>{if(user&&!document.hidden&&profile?.member_id)refreshReaderExtras().then(()=>renderApp()).catch(console.warn);},60000);
+
+setInterval(refreshVoteCountdowns,30000);
