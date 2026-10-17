@@ -1,3 +1,4 @@
+let readerEntry=null;
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
 /* FantastiX 3.15.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
@@ -68,11 +69,11 @@ function meetingNoteDisplay(m,memberId){return meetingNote(m.id,memberId)||(effe
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
- return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} da · ${count.no} nicht da · ${count.open} offen</small></div>
+ return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id),note=a?.status==='present'?meetingNoteDisplay(m,p.id):'';
  return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
- <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Da':'× Nicht da'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
+ <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Dabei':'× Nicht dabei'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
 }
 
@@ -82,7 +83,7 @@ function tripLastDate(x){return x.endDate||x.date||'';}
 function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
 function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,no:votes.filter(v=>v.status==='no').length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} da · ${excursionCount(x.id).no} nicht da</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Da':v?.status==='no'?'× Nicht da':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} Dabei · ${excursionCount(x.id).no} Nicht dabei</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -130,9 +131,9 @@ function dashboard(){
   <div class="metric"><small>Ewige Führung</small>${leaderHTML(all)}</div>
  </div>
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2><span class="chip">${next?daysUntil(next.date)===0?'Heute':`In ${daysUntil(next.date)} Tagen`:'Nicht geplant'}</span></div>
- ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${votePanel(next,true)}${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-tab="meetings">Alle ansehen →</button></div>`:''}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
+ ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p><p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button></div>`:`<button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button>`}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 2 Stammtische</h2>${completed.slice(0,2).length?completed.slice(0,2).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
- ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-tab="excursions" type="button">Events ansehen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
+ ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-reader-excursion="${esc(nextTrip().id)}" type="button">Öffnen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  `;
 }
 function votePanel(m,compact=false){
@@ -143,16 +144,38 @@ function votePanel(m,compact=false){
  const status=own?.status||'';
  const summary=closed?'Abstimmung geschlossen':`Frist: ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Da</button>
- <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht da</button></div>
+ <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Dabei</button>
+ <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht dabei</button></div>
  ${status==='present'&&!locked&&!closed?`<div class="meeting-note-editor"><label for="meeting-note-${esc(m.id)}">Notiz für alle (optional, max. 160 Zeichen)</label><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme 15 Minuten später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Notiz speichern</button></div>`:''}
  ${status?`<small class="muted">${status==='present'?'Zusage':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
+function readerEntryBack(label){return `<button type="button" class="smallbtn reader-entry-back" data-reader-back>← ${readerEntry?.from==='dashboard'?'Zum Dashboard':'Zurück zu '+label}</button>`;}
+function readerCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
 function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
+ if(readerEntry?.kind==='meeting'&&data.meetings.some(m=>m.id===readerEntry.id))return meetingDetails(readerEntry.id);
  const items=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date));
- return `${heading('Stammtische')}${items.length?items.map(m=>`<section class="card meeting-card">
+ return `${heading('Stammtische')}<section class="card reader-entry-list">${items.map(m=>`<button type="button" class="reader-entry" data-reader-meeting="${esc(m.id)}" aria-label="Stammtisch am ${esc(dateLabel(m.date))} öffnen"><span class="reader-entry-info"><strong>${dateLabel(m.date)} · ${esc(timeLabel(m.time))} Uhr</strong><span>${esc(m.location||'Gasthaus noch offen')}</span>${section('members')?`<small>Organisator: ${esc(memberName(m.organizerId))}</small>${readerCountSummary(rsvpCounts(m))}`:''}</span><span class="reader-entry-end"><span class="chip gray">${m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen'}</span><span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
+}
+function excursions(){
+ if(!section('excursions'))return empty('Events sind nicht freigegeben.');
+ if(readerEntry?.kind==='excursion'&&(data.excursions||[]).some(x=>x.id===readerEntry.id))return excursionDetails(readerEntry.id);
+ const items=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
+ return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}<section class="card reader-entry-list">${items.map(x=>`<button type="button" class="reader-entry" data-reader-excursion="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${tripDateLabel(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(tripOrganizers(x))}</small>${readerCountSummary(excursionCount(x.id))}</span><span class="reader-entry-end">${x.completed?'<span class="chip gray">Abgeschlossen</span>':''}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>`;
+}
+function openReaderEntry(kind,id){
+ const meeting=kind==='meeting',target=meeting?'meetings':'excursions';
+ if(!section(target)||!(data?.[target]||[]).some(x=>x.id===id))return;
+ readerEntry={kind,id,from:tab};tab=target;
+ renderApp();scrollTo({top:0,behavior:'instant'});
+ document.querySelector('#content .title')?.setAttribute('tabindex','-1');
+ document.querySelector('#content .title')?.focus();
+}
+function meetingDetails(id){
+ if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
+ const items=data.meetings.filter(m=>m.id===id);
+ return `${readerEntryBack('Stammtische')}${heading('Stammtisch')}${items.length?items.map(m=>`<section class="card meeting-card">
  <div class="row"><h2>${dateLabel(m.date)}</h2><span class="chip ${m.date>today()?'':'gray'}">${m.date>today()?'Geplant':'Vergangen'}</span></div>
  <p>${esc(m.location||'Gasthaus offen')} · ${esc(timeLabel(m.time))} Uhr</p>
  ${section('members')?`<p class="muted tiny">Organisator: ${esc(memberName(m.organizerId))}</p>`:''}
@@ -164,13 +187,14 @@ function meetings(){
 }
 
 function calendarPage(){const shown={meetings:section('meetings')?data.meetings:[],excursions:section('excursions')?data.excursions:[],birthdays:section('members')?birthdays.map(b=>({...b,name:memberName(b.member_id)})):[]};return `${heading('Kalender')}${window.FantastiXCalendar.render(shown,calendarMonth,calendarSelected,false)}`;}
-function excursions(){
- const sorted=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
- return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
+function excursionDetails(id){
+ if(!section('excursions'))return empty('Events sind nicht freigegeben.');
+ const sorted=(data.excursions||[]).filter(x=>x.id===id).sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
+ return `${readerEntryBack('Events')}${heading('Event')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${x.completed?'Abgeschlossen':tripDateLabel(x)}</span></div>
  ${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
- <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Da':own?.status==='no'?'Nicht da':'Noch offen'}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Da</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht da</button></div>
+ <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Dabei':own?.status==='no'?'Nicht dabei':'Noch offen'}</span></div>
+ <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Dabei</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht dabei</button></div>
  <small class="muted">${'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
 function ranking(){
@@ -426,7 +450,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -474,10 +498,10 @@ function askAbsenceReason(meetingId){
  const meeting=data?.meetings?.find(m=>m.id===meetingId);
  const saved=meeting?effective(meeting,profile?.member_id):null;
  const dlg=$('#absence-dialog');
- dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>Grund für „Nicht da“</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div>
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>Grund für „Nicht dabei“</h2><button type="button" class="close" id="close-absence" aria-label="Schließen">×</button></div>
  <form id="absence-reason-form"><input type="hidden" name="meetingId" value="${esc(meetingId)}"><div class="field"><label>Abwesenheitsgrund *</label>
  <input name="reason" maxlength="150" minlength="1" value="${esc(saved?.status==='absent'?saved.reason||'':'')}" placeholder="z. B. Urlaub, beruflich verhindert" required autofocus></div>
- <div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Nicht da speichern</button></div></form></div>`;
+ <div class="foot"><button type="button" class="ghost" id="cancel-absence">Abbrechen</button><button type="submit" class="button">Nicht dabei speichern</button></div></form></div>`;
  dlg.showModal();
 }
 document.addEventListener('submit',e=>{
@@ -492,6 +516,9 @@ document.addEventListener('submit',e=>{
  }
 });
 document.addEventListener('click',e=>{
+ const entry=e.target.closest('[data-reader-meeting],[data-reader-excursion]');
+ if(entry){openReaderEntry(entry.hasAttribute('data-reader-meeting')?'meeting':'excursion',entry.dataset.readerMeeting??entry.dataset.readerExcursion);return;}
+ if(e.target.closest('[data-reader-back]')){const from=readerEntry?.from||tab;readerEntry=null;tab=from;renderApp();scrollTo({top:0,behavior:'instant'});return;}
  if(e.target.closest('#reader-bell')){readerInboxOpen=!readerInboxOpen;renderApp();return;}if(e.target.closest('#reader-inbox-close')){readerInboxOpen=false;renderApp();return;}if(e.target.closest('#reader-read-all')){readerReadAll();return;}
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
@@ -505,7 +532,7 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
  const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
  const nav=e.target.closest('[data-tab]');if(nav){
- tab=nav.dataset.tab;scrollTo({top:0,behavior:'instant'});
+ readerEntry=null;tab=nav.dataset.tab;scrollTo({top:0,behavior:'instant'});
  if(user&&navigator.onLine&&['dashboard','meetings','calendar'].includes(tab)){
   $('#content').innerHTML='<section class="card"><p class="muted">Aktuelle Termine werden geladen …</p></section>';
   refresh();
