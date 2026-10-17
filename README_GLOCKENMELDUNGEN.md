@@ -1,4 +1,4 @@
-# FantastiX 3.21.0 – verständliche Glockenmeldungen
+# FantastiX 3.21.1 – verständliche Glockenmeldungen
 
 Neue Meldungen entstehen beim Speichern im zentralen Datenbestand, unabhängig von einer späteren Veröffentlichung des Leser-Snapshots.
 
@@ -40,3 +40,9 @@ node test-bell-notifications.cjs
 ```
 
 Die Prüfung verwendet ausschließlich synthetische Daten. Noch keine produktive Datenbankänderung und keine Meldung an echte Mitglieder.
+
+## Lesermenü ab 3.21.1
+
+Der Button „Alle als gelesen markieren“ steht oben beim Ungelesen-Zähler. Jede ungelesene Nachricht hat einen eigenen „Gelesen“-Button. Nach erfolgreichem Speichern aktualisieren sich Nachricht und Zähler; bei einem Fehler bleibt sie ungelesen. Während des Speicherns sind die Lesebuttons gesperrt. Dafür ist keine neue SQL-Migration erforderlich.
+
+Zusätzlicher Test: `node test-reader-inbox.cjs`.

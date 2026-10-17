@@ -255,9 +255,25 @@ function readerInbox(){
   }
   return {label,body:`Zu „${title}“: ${body}.`};
  }
-return `<section class="card fx-reader-inbox"><div class="row"><h2>🔔 Benachrichtigungen</h2><button class="smallbtn" id="reader-inbox-close">Schließen</button></div><p class="muted tiny">${readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length} ungelesen</p>${[...readerUpdates].sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0)).map(x=>`<div class="fx-inbox-item ${readerUpdateReads.has(x.id)?'':'unread'}"><small>${esc(noticeText(x).label)}</small><strong>${esc(x.title)}</strong><p>${esc(noticeText(x).body)}</p><small>${dateTime(x.created_at)}</small></div>`).join('')||'<p>Keine Benachrichtigungen</p>'}<button class="ghost" id="reader-read-all">Alle als gelesen markieren</button></section>`;}
-let readerInboxOpen=false;
-async function readerReadAll(){const ids=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).map(x=>x.id);if(ids.length){const r=await cloud.from('fantastix_update_reads').upsert(ids.map(update_id=>({update_id,user_id:user.id})),{onConflict:'update_id,user_id'});if(r.error)return alert(r.error.message);}ids.forEach(id=>readerUpdateReads.add(id));renderApp();}
+ const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;
+ return `<section class="card fx-reader-inbox fx-inbox-content"><div class="fx-inbox-head"><h2>🔔 Benachrichtigungen</h2><button type="button" class="smallbtn" id="reader-inbox-close">Schließen</button></div><div class="fx-inbox-summary"><span>${unread} ungelesen · ${readerUpdates.length} Meldungen</span><button type="button" class="smallbtn" id="reader-read-all" ${!unread||readerReadBusy?'disabled':''}>Alle als gelesen markieren</button></div>${[...readerUpdates].sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0)).map(x=>{const isRead=readerUpdateReads.has(x.id);return `<article class="fx-inbox-item ${isRead?'':'unread'}"><div class="fx-inbox-item-top"><span class="fx-type">${esc(noticeText(x).label)}</span>${isRead?'':'<span class="fx-unread-dot" aria-label="Ungelesen"></span>'}</div><strong>${esc(x.title)}</strong><p>${esc(noticeText(x).body)}</p><div class="fx-inbox-item-bottom"><small>${dateTime(x.created_at)}</small>${isRead?'<small>Gelesen</small>':`<button type="button" class="smallbtn" data-reader-read="${esc(x.id)}" ${readerReadBusy?'disabled':''}>Gelesen</button>`}</div></article>`;}).join('')||'<p class="muted">Noch keine Benachrichtigungen.</p>'}</section>`;
+}
+let readerInboxOpen=false,readerReadBusy=false;
+async function readerMarkRead(ids){
+ if(readerReadBusy||!cloud||!user?.id)return;
+ const selected=[...new Set(ids)].filter(id=>readerUpdates.some(x=>x.id===id)&&!readerUpdateReads.has(id));
+ if(!selected.length)return;
+ const userId=user.id;
+ readerReadBusy=true;renderApp();
+ try{
+  const {error}=await cloud.from('fantastix_update_reads').upsert(selected.map(update_id=>({update_id,user_id:userId})),{onConflict:'update_id,user_id'});
+  if(error)throw error;
+  if(user?.id===userId)selected.forEach(id=>readerUpdateReads.add(id));
+ }catch(e){if(user?.id===userId)alert('Nachricht konnte nicht als gelesen markiert werden: '+(e.message||String(e)));}
+ finally{readerReadBusy=false;if(user?.id===userId)renderApp();}
+}
+async function readerReadOne(id){const message=readerUpdates.find(x=>String(x.id)===String(id));if(message)await readerMarkRead([message.id]);}
+async function readerReadAll(){await readerMarkRead(readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).map(x=>x.id));}
 
 function pastSeriesMeetings(){return data.meetings.filter(m=>m.date<=today()).sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));}
 function currentStreak(id){let total=0;for(const m of pastSeriesMeetings()){if(effective(m,id)?.status!=='present')break;total++;}return total;}
@@ -585,6 +601,7 @@ document.addEventListener('click',e=>{
  const entry=e.target.closest('[data-reader-meeting],[data-reader-excursion]');
  if(entry){openReaderEntry(entry.hasAttribute('data-reader-meeting')?'meeting':'excursion',entry.dataset.readerMeeting??entry.dataset.readerExcursion);return;}
  if(e.target.closest('[data-reader-back]')){const from=readerEntry?.from||tab;readerEntry=null;tab=from;renderApp();scrollTo({top:0,behavior:'instant'});return;}
+ const readMessage=e.target.closest('[data-reader-read]');if(readMessage){readerReadOne(readMessage.dataset.readerRead);return;}
  if(e.target.closest('#reader-bell')){readerInboxOpen=!readerInboxOpen;renderApp();return;}if(e.target.closest('#reader-inbox-close')){readerInboxOpen=false;renderApp();return;}if(e.target.closest('#reader-read-all')){readerReadAll();return;}
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
