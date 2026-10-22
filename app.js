@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.21.4";
+const APP_VERSION = window.FX_VERSION || "3.21.5";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -243,7 +243,7 @@ function homeHTML(){
  const leaderList=(list)=>list.length?`<div class="leader-list">${list.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${list[0].count} Teilnahmen</small>`:`<div class="value">–</div>`;
  return `${pageHead('','Dashboard','')}
   <div class="metric-grid dashboard-stats dashboard-v36">
-   <div class="metric ${days===0?'beer-today':''}">${days===0?'<div class="value">Heute gibt es Lecker Bierchen!</div>':`<small>Tage bis zum Lecker Bierchen <span class="beer-symbol" aria-hidden="true">🍺</span></small><div class="value">${days===null?'–':days}</div>`}</div>
+   <div class="metric beer-countdown ${days===0?'beer-today':''}">${days===0?'<div class="value">Heute gibt es Lecker Bierchen! 🍺</div>':`<small>Tage bis zum Lecker Bierchen <span class="beer-symbol" aria-hidden="true">🍺</span></small><div class="value">${days===null?'–':days}</div>`}</div>
    <div class="metric"><small>Kontostand <span aria-hidden="true">💰</span></small><div class="value balance-tile">${money(accountBalance())}</div><small>Offene Strafen: ${money(pending)}</small></div>
    <div class="metric"><small>Ewige Rangliste <span aria-hidden="true">👑</span></small>${leaderList(allBest)}</div>
    <div class="metric"><small>Jahresführende ${yearOf(today())}</small>${leaderList(yearBest)}</div>

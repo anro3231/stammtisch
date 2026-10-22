@@ -139,7 +139,7 @@ function dashboard(){
  const pending=section('fines')?data.fines.reduce((s,f)=>s+n(f.amountCents),0)-data.payments.reduce((s,p)=>s+n(p.amountCents),0):null;
  const leaderHTML=lst=>lst.length?`<div class="leader-list">${lst.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${lst[0].count} Teilnahmen</small>`:'<div class="value">–</div>';
  return `${heading('Dashboard')}<div class="metric-grid dashboard-v36">
-  <div class="metric ${days===0?'beer-today':''}">${days===0?'<div class="value">Heute gibt es Lecker Bierchen!</div>':`<small>Tage bis zum Lecker Bierchen <span class="beer-symbol" aria-hidden="true">🍺</span></small><div class="value">${days===null?'–':days}</div>`}</div>
+  <div class="metric beer-countdown ${days===0?'beer-today':''}">${days===0?'<div class="value">Heute gibt es Lecker Bierchen! 🍺</div>':`<small>Tage bis zum Lecker Bierchen <span class="beer-symbol" aria-hidden="true">🍺</span></small><div class="value">${days===null?'–':days}</div>`}</div>
   <div class="metric"><small>Kontostand <span aria-hidden="true">💰</span></small><div class="value balance-tile">${section('cash')?money(data.cashbook?.balanceCents):'–'}</div><small>Offene Strafen: ${pending!==null?money(Math.max(0,pending)):'–'}</small></div>
   <div class="metric"><small>Ewige Rangliste <span aria-hidden="true">👑</span></small>${leaderHTML(all)}</div>
   <div class="metric"><small>Jahresführung ${currentYear()}</small>${leaderHTML(yr)}</div>

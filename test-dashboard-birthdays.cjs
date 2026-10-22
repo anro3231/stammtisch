@@ -26,12 +26,12 @@ for(const env of [admin,reader]){
  let html=dashboard();let recent=html.split('Letzte 3 Stammtische')[1].split('</section>')[0];
  assert.match(recent,/ALT1/);assert.match(recent,/ALT2/);assert.match(recent,/ALT3/);
  assert.doesNotMatch(recent,/HEUTE|ALT4/);
- assert.match(html,/metric beer-today/);assert.match(html,/Heute gibt es Lecker Bierchen!/);
+ assert.match(html,/metric beer-countdown beer-today/);assert.match(html,/Heute gibt es Lecker Bierchen! 🍺/);
  assert.doesNotMatch(env.run('strongestStreakHTML()'),/Absagen und fehlende/);
  env.ctx.Date=class extends FixedDate {constructor(...args){super(...(args.length?args:['2026-10-18T12:00:00Z']));}};
  html=dashboard();recent=html.split('Letzte 3 Stammtische')[1].split('</section>')[0];
  assert.match(recent,/HEUTE/);assert.doesNotMatch(recent,/ALT3|ALT4/);
- assert.doesNotMatch(html,/metric beer-today|Heute gibt es Lecker Bierchen!/);
+ assert.match(html,/metric beer-countdown/);assert.doesNotMatch(html,/beer-countdown beer-today|Heute gibt es Lecker Bierchen!/);
  env.run("data.meetings.push({id:'next',date:'2026-10-20'})");
  assert.match(dashboard(),/Tage bis zum Lecker Bierchen[\s\S]*?class="value">2</);
 }
