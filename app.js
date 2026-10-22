@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.21.2";
+const APP_VERSION = window.FX_VERSION || "3.21.4";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -397,7 +397,7 @@ function settingsHTML(){
  ${active?`<button class="ghost" data-action="cloud-check">Jetzt synchronisieren</button>`:''}
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
  <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button><p class="hint">Erinnerung: ${voteReminderEnabled()?voteReminderHours()+' Stunden vor Fristende':'ausgeschaltet'}</p></div></section>
- <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische werden ebenfalls automatisch per Push angekündigt. Fristerinnerungen lassen sich unter „Abstimmungsfrist“ einrichten.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
+ <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische und neue Events werden bei ihrer Veröffentlichung ebenfalls automatisch per Push angekündigt. Fristerinnerungen lassen sich unter „Abstimmungsfrist“ einrichten.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
  <section class="card"><h2>Cloud-Sicherheit · Version 3.12</h2><p class="hint">Serverseitiger Änderungsverlauf und wöchentliche Cloud-Sicherungen. Nur als Administrator abrufbar.</p><div class="stack"><button class="button" data-action="audit-list">Änderungsverlauf ansehen</button><button class="ghost" data-action="backup-list">Cloud-Backups & Wiederherstellung</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;

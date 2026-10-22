@@ -1,0 +1,41 @@
+FantastiX 3.21.4 – Einmaliger Push-Hinweis und Dashboard-Status
+
+Enthält auch die Event-Push-Erweiterung aus 3.21.3.
+
+Installation:
+1. App-Dateien aus dem ZIP übernehmen: app.js, lesen.js, index.html,
+   lesen.html, service-worker.js und version.js.
+   Eigene cloud-config.js und push-config.js unverändert behalten.
+2. Deployment abwarten, installierte App aktualisieren und neu öffnen.
+3. Für den neuen Hinweis und die Verschiebung ist keine SQL-Änderung nötig.
+   Nur falls die Event-Push-Erweiterung noch nicht installiert wurde:
+   zusätzlich 25_EVENT_PUSH.sql in Supabase ausführen.
+   rapid-task und der bestehende Zwei-Minuten-Zeitplan bleiben unverändert.
+
+Neues im Mitgliedermodus:
+- Der Mitteilungsstatus steht am Ende des Dashboards, nach der Stammtischserie.
+- Im Menü Mitglieder wurde dieser Abschnitt entfernt.
+- Angemeldete, einem Mitglied zugeordnete Nutzer ohne Push-Freigabe sehen
+  einmal einen Hinweis. Bei bereits erteilter Freigabe erscheint er nicht.
+- Die einmalige Anzeige wird pro Konto in diesem Browser/Gerät gespeichert,
+  weil auch die Push-Freigabe geräteabhängig ist. Löschen der Browserdaten
+  setzt diese Erinnerung zurück. Bei gesperrtem Browserspeicher gilt sie
+  mindestens für die laufende Sitzung.
+- Erst der bewusste Klick auf „Mitteilungen erlauben“ öffnet die Systemabfrage.
+- „Jetzt nicht“, Schließen oder Escape verursachen keine erneute Aufforderung.
+  Aktivieren bleibt jederzeit unten im Dashboard möglich.
+- Bei blockierter Freigabe erscheint eine Erklärung zu den Geräteeinstellungen;
+  bei fehlender Unterstützung ein Hinweis zur Installation (z. B. iPhone).
+- Der Hinweis wartet, solange andere Nachrichten-/Eingabedialoge offen sind.
+- Der Dashboard-Status unterscheidet aktivierte, blockierte, noch nicht erlaubte
+  und erlaubte, aber noch nicht mit dem Versand verbundene Mitteilungen.
+
+Tests mit synthetischen Konten und simulierten Browserfreigaben:
+node test-push-opt-in.cjs
+node test-reader-compact.cjs
+node test-member-details.cjs
+node test-reader-inbox.cjs
+node test-reader-calendar.cjs
+node test-dashboard-birthdays.cjs
+Event-Push zusätzlich mit PGlite getestet (siehe test-event-push.cjs).
+Keine Live-Datenbank geändert und keine echten Push-Nachrichten versendet.

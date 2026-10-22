@@ -1,7 +1,7 @@
 // No database/network calls: test rendering and navigation against synthetic data.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const elements=new Map();
-const element=()=>({innerHTML:'',textContent:'',hidden:false,setAttribute(){},focus(){}});
+const element=()=>({innerHTML:'',textContent:'',hidden:false,open:false,showModal(){this.open=true;},close(){this.open=false;},setAttribute(){},focus(){}});
 const listeners={};
 const context=vm.createContext({window:{},navigator:{onLine:false},scrollTo(){},console,
  document:{querySelector:s=>{if(!elements.has(s))elements.set(s,element());return elements.get(s);},addEventListener:(kind,fn)=>{listeners[kind]=fn;}}});

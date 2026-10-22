@@ -1,3 +1,4 @@
+function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions'].includes(requested)?requested:'dashboard';}
 let readerEntry=null;
 let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
 /* FantastiX 3.15.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
@@ -13,7 +14,7 @@ const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(d
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
 const empty=msg=>`<section class="card"><p class="muted">${esc(msg)}</p></section>`;
 const heading=txt=>`<h1 class="title">${esc(txt)}</h1>`;
-let readerUpdates=[],readerPresence={},readerUpdateReads=new Set(),meetingNotes=[],birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab='dashboard',year=currentYear(),lastFetched='',busy=false,authMode='login';
+let readerUpdates=[],readerPresence={},readerUpdateReads=new Set(),meetingNotes=[],birthdays=[],cloud=null,user=null,profile=null,data=null,deadlines=new Map(),excursionVotes=[],excursionVoteError='',notices=[],noticeQueue=[],noticeAcknowledging=false,avatarUrls={},avatarLoadedAt=0,tab=initialPushTab(),year=currentYear(),lastFetched='',busy=false,authMode='login';
 // Supabase Auth benutzt intern eine nicht zustellbare Anmeldekennung. Das Projekt
 // MUSS Auth > Sign In / Providers > Email > Confirm Email deaktiviert haben.
 // Altkonten (auch Admins) können sich weiterhin mit ihrer E-Mail anmelden.
@@ -117,6 +118,7 @@ function renderApp(){
  $('#content').innerHTML=(readerInboxOpen?readerInbox():'')+({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
  const bell=$('#reader-bell');if(bell){const count=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;bell.innerHTML='🔔'+(count?`<b>${count}</b>`:'');}
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
+ showPushOptIn();
 }
 function voteTimeRemaining(deadline,now=Date.now()){
  const end=Number(deadline);if(deadline===null||deadline===''||!Number.isFinite(end))return 'Abstimmungsfrist nicht verfügbar.';
@@ -146,7 +148,7 @@ function dashboard(){
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p>${voteCountdownHTML(deadlines.has(next.id)?new Date(deadlines.get(next.id)).getTime():null)}<p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} <button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button></div>`:`<button type="button" class="smallbtn" data-reader-meeting="${esc(next.id)}">Öffnen →</button>`}`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 3 Stammtische</h2>${completed.slice(0,3).length?completed.slice(0,3).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2><span class="chip">${nextTrip()?tripDateLabel(nextTrip()):'Nicht geplant'}</span></div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="muted">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-reader-excursion="${esc(nextTrip().id)}" type="button">Öffnen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
- ${strongestStreakHTML()}`;
+ ${strongestStreakHTML()}${pushPromptHTML()}`;
 }
 function votePanel(m,compact=false){
  if(!profile?.member_id||!section('meetings'))return '';
@@ -294,7 +296,7 @@ function memberDetails(id){
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
  if(readerEntry?.kind==='member'&&data.members.some(m=>m.id===readerEntry.id))return memberDetails(readerEntry.id);
- return `${heading('Mitglieder')}<section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section><section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<button type="button" class="reader-entry" data-reader-member="${esc(m.id)}">${avatarFor(m.id)}<span class="reader-entry-info member-entry-info"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small><small class="fx-last-seen">${esc(lastSeenReader(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>${pushPromptHTML()}`;
+ return `${heading('Mitglieder')}<section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section><section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<button type="button" class="reader-entry" data-reader-member="${esc(m.id)}">${avatarFor(m.id)}<span class="reader-entry-info member-entry-info"><strong>${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small><small class="fx-last-seen">${esc(lastSeenReader(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button>`).join('')||'<p>Keine Mitglieder</p>'}</div></section>`;
 }
 function readerFineBalances(){
  const paid=new Map(),totals=new Map();
@@ -318,7 +320,9 @@ function cash(){
 // Keine Nachrichtenliste und kein Menuepunkt fuer Leser.
 function showNextNotice(){
  const dlg=$('#notice-dialog');
- if(!dlg||dlg.open||noticeAcknowledging||!profile?.member_id||!noticeQueue.length)return;
+ if(!dlg||dlg.open||noticeAcknowledging||!profile?.member_id)return;
+ if(!noticeQueue.length){showPushOptIn();return;}
+ if($('#push-opt-in-dialog')?.open)return;
  if($('#absence-dialog')?.open)return;
  const v=noticeQueue.shift();
  if(!v)return;
@@ -377,13 +381,32 @@ function profilePage(){return `${heading('Mein Profil')}<section class="card"><h
 
 /* FantastiX 3.11: Web Push - Opt-in nur nach ausdruecklichem Tippen. */
 let pushBusy=false, pushEnabled=false;
+// Permission belongs to this browser/device; remember the invitation per account here.
+const pushInvitationsSeen=new Set();
+function pushPermission(){return typeof Notification==='undefined'?'unsupported':Notification.permission;}
+function pushInvitationKey(){return user?.id?'fantastix.push-invitation.v1:'+user.id:null;}
+function showPushOptIn(){
+ if(!user||!data||!profile?.member_id||pushPermission()==='granted'||pushEnabled||pushBusy)return;
+ const key=pushInvitationKey(),dlg=$('#push-opt-in-dialog');
+ if(!key||!dlg||dlg.open||pushInvitationsSeen.has(key))return;
+ try{if(localStorage.getItem(key)==='shown')return;}catch{}
+ if(noticeQueue.length||noticeAcknowledging||$('#notice-dialog')?.open||$('#absence-dialog')?.open||$('#member-notice-dialog')?.open)return;
+ const supported=pushSupported(),denied=pushPermission()==='denied';
+ const text=denied?'Mitteilungen sind für FantastiX blockiert. Du kannst sie in den Browser- oder Geräteeinstellungen wieder erlauben.':supported?'Erlaube Mitteilungen, damit du neue Stammtische, Events und Nachrichten auch bei geschlossener App mitbekommst.':'Öffne FantastiX auf einem Gerät mit Push-Unterstützung. Auf dem iPhone: in Safari zum Home-Bildschirm hinzufügen und die installierte App öffnen. Den Mitteilungsstatus findest du unten im Dashboard.';
+ dlg.innerHTML=`<div class="modalbody"><div class="modalhead"><h2>${denied?'Mitteilungen sind blockiert':'Mitteilungen erlauben'}</h2></div><p>${text}</p><div class="stack">${supported&&!denied?'<button class="button" type="button" id="push-opt-in-allow">Mitteilungen erlauben</button>':''}<button class="ghost" type="button" id="push-opt-in-dismiss">${supported&&!denied?'Jetzt nicht':'Verstanden'}</button></div></div>`;
+ dlg.showModal();pushInvitationsSeen.add(key);
+ try{localStorage.setItem(key,'shown');}catch{}
+}
+
 const PUSH_CONFIG=()=>String(window.FANTASTIX_PUSH_PUBLIC_KEY||'');
 function base64UrlToUint8Array(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0));}
 function pushSupported(){return window.isSecureContext&&'Notification' in window&&'serviceWorker' in navigator&&'PushManager' in window&&!!PUSH_CONFIG();}
 function pushPromptHTML(){
- if(!pushSupported())return '<section class="push-setup"><strong>Mitteilungen</strong><p>Für Push-Mitteilungen diese App auf einem unterstützten Gerät als Web-App installieren (iPhone: Safari → Teilen → Zum Home-Bildschirm) und erneut öffnen.</p></section>';
- if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen, Nachrichten und eingerichteten Abstimmungserinnerungen. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
- return `<section class="push-setup"><strong>Stammtisch-Mitteilungen</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen und Admin-Nachrichten. Automatische Fristerinnerungen werden vom Administrator eingerichtet.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 Mitteilungen erlauben</button><p class="push-status">${Notification.permission==='denied'?'Mitteilungen sind für FantastiX in deinen Geräteeinstellungen blockiert.':''}</p></section>`;
+ if(!pushSupported())return '<section class="push-setup"><strong>Mitteilungen auf diesem Gerät nicht verfügbar</strong><p>Für Push-Mitteilungen diese App auf einem unterstützten Gerät als Web-App installieren (iPhone: Safari → Teilen → Zum Home-Bildschirm) und erneut öffnen.</p></section>';
+ if(pushEnabled)return `<section class="push-setup"><strong>Mitteilungen aktiviert ✓</strong><p>Du erhältst Hinweise zu neuen Stammtischen, neuen Events, Nachrichten und eingerichteten Abstimmungserinnerungen. <button class="smallbtn" type="button" id="push-disable">Deaktivieren</button></p></section>`;
+ if(pushPermission()==='denied')return '<section class="push-setup"><strong>Mitteilungen blockiert</strong><p>Erlaube Mitteilungen für FantastiX in deinen Browser- oder Geräteeinstellungen und öffne die App danach erneut.</p></section>';
+ const allowed=pushPermission()==='granted';
+ return `<section class="push-setup"><strong>${allowed?'Mitteilungen erlaubt – Gerät noch nicht verbunden':'Mitteilungen noch nicht erlaubt'}</strong><p>Erhalte Push-Mitteilungen bei neuen Stammtischen, neuen Events und Admin-Nachrichten. Automatische Fristerinnerungen werden vom Administrator eingerichtet.</p><button class="button" type="button" id="push-enable" ${pushBusy?'disabled':''}>🔔 ${allowed?'Mitteilungen aktivieren':'Mitteilungen erlauben'}</button></section>`;
 }
 // PushManager.subscribe() darf erst nach der Aktivierung des Service Workers laufen.
 // Eine erfolgreiche register()-Antwort allein bedeutet NICHT, dass er schon aktiv ist.
@@ -418,9 +441,10 @@ async function unregisterReminderSubscription(sub){
  if(error)console.warn('Erinnerungs-Abmeldung:',error.code||'RPC');}catch{console.warn('Erinnerungs-Abmeldung vorübergehend nicht erreichbar.');}
 }
 async function detectPushSubscription(){
- if(!pushSupported()||!user||!profile?.member_id)return;
+ if(!user||!profile?.member_id)return;
+ if(!pushSupported()){pushEnabled=false;if(tab==='dashboard'&&data)renderApp();else showPushOptIn();return;}
  try{const reg=await activePushRegistration();const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;await registerReminderSubscription(sub);}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
- if(tab==='dashboard'&&data)renderApp();
+ if(tab==='dashboard'&&data)renderApp();else showPushOptIn();
 }
 async function enablePush(){
  if(pushBusy||!cloud||!user||!profile?.member_id)return;
@@ -531,7 +555,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -606,6 +630,8 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#reader-bell')){readerInboxOpen=!readerInboxOpen;renderApp();return;}if(e.target.closest('#reader-inbox-close')){readerInboxOpen=false;renderApp();return;}if(e.target.closest('#reader-read-all')){readerReadAll();return;}
  const toggle=e.target.closest('#auth-mode-toggle');if(toggle){authMode=authMode==='signup'?'login':'signup';renderGate();return;}
  if(e.target.closest('#reader-logout')){logout();return;}
+ if(e.target.closest('#push-opt-in-allow')){$('#push-opt-in-dialog').close();enablePush();return;}
+ if(e.target.closest('#push-opt-in-dismiss')){$('#push-opt-in-dialog').close();return;}
  if(e.target.closest('#push-enable')){enablePush();return;}
  if(e.target.closest('#push-disable')){disablePush();return;}
  if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
@@ -634,8 +660,10 @@ document.addEventListener('click',e=>{
 });
 $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
 $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
+$('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
+$('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
 document.addEventListener('change',e=>{if(e.target.id==='reader-ranking-year'){year=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
-navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar'].includes(e.data.tab)){tab=e.data.tab;if(data)renderApp();}});
+navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
