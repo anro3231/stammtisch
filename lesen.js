@@ -1,7 +1,6 @@
 function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions'].includes(requested)?requested:'dashboard';}
 let readerEntry=null;
 const memberHistoryLimits=new Map();
-let calendarMonth=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Vienna'}).slice(0,7), calendarSelected=calendarMonth+'-01';
 /* FantastiX 3.15.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,6 +9,7 @@ const money=c=>new Intl.NumberFormat('de-AT',{style:'currency',currency:'EUR'}).
 const dateLabel=s=>s?new Date(s+'T12:00:00').toLocaleDateString('de-AT',{day:'2-digit',month:'long',year:'numeric'}):'–';
 const timeLabel=s=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s||'')?s:'19:00';
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+let calendarSelected=today(),calendarMonth=calendarSelected.slice(0,7);
 const currentYear=()=>today().slice(0,4);
 const dateTime=s=>{if(!s)return '–';const dt=new Date(s);return Number.isNaN(dt.valueOf())?'–':dt.toLocaleString('de-AT');};
 const deadlineLabel=s=>{if(!s)return '–';return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(s))+' Uhr';};
@@ -171,15 +171,16 @@ function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  if(readerEntry?.kind==='meeting'&&data.meetings.some(m=>m.id===readerEntry.id))return meetingDetails(readerEntry.id);
  const items=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date));
- return `${heading('Stammtische')}<section class="card reader-entry-list">${items.map(m=>`<button type="button" class="reader-entry${m.date<today()?' past-entry':''}" data-reader-meeting="${esc(m.id)}" aria-label="Stammtisch am ${esc(dateLabel(m.date))} öffnen"><span class="reader-entry-info"><strong>${dateLabel(m.date)} · ${esc(timeLabel(m.time))} Uhr</strong><span>${esc(m.location||'Gasthaus noch offen')}</span>${section('members')?`<small>Organisator: ${esc(memberName(m.organizerId))}</small>${readerCountSummary(rsvpCounts(m))}`:''}</span><span class="reader-entry-end"><span class="chip gray">${m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen'}</span><span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
+ return `${heading('Stammtische')}<section class="card reader-entry-list">${items.map(m=>`<button type="button" class="reader-entry" data-reader-meeting="${esc(m.id)}" aria-label="Stammtisch am ${esc(dateLabel(m.date))} öffnen"><span class="reader-entry-info"><strong>${dateLabel(m.date)} · ${esc(timeLabel(m.time))} Uhr</strong><span>${esc(m.location||'Gasthaus noch offen')}</span>${section('members')?`<small>Organisator: ${esc(memberName(m.organizerId))}</small>${readerCountSummary(rsvpCounts(m))}`:''}</span><span class="reader-entry-end">${termStatusHTML(m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen')}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Stammtische.</p>'}</section>`;
 }
+function termStatusHTML(label){const kind={'Heute':'today','Geplant':'planned','Vergangen':'past','Abgeschlossen':'closed','Läuft':'live','In Planung':'draft'}[label]||'draft';return `<span class="chip meeting-status status-${kind}">${esc(label)}</span>`;}
 function eventIsPast(x){return !!x.completed||!!(x.endDate||x.date)&&(x.endDate||x.date)<today();}
 function eventStatus(x){if(x.completed)return 'Abgeschlossen';if(eventIsPast(x))return 'Vergangen';if(!x.date)return 'In Planung';if(x.date>today())return 'Geplant';if(x.endDate&&x.endDate>x.date)return 'Läuft';return x.date===today()?'Heute':'Vergangen';}
 function excursions(){
  if(!section('excursions'))return empty('Events sind nicht freigegeben.');
  if(readerEntry?.kind==='excursion'&&(data.excursions||[]).some(x=>x.id===readerEntry.id))return excursionDetails(readerEntry.id);
  const items=[...(data.excursions||[])].sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
- return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}<section class="card reader-entry-list">${items.map(x=>`<button type="button" class="reader-entry${eventIsPast(x)?' past-entry':''}" data-reader-excursion="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${tripDateLabel(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(tripOrganizers(x))}</small>${readerCountSummary(excursionCount(x.id))}</span><span class="reader-entry-end"><span class="chip gray">${eventStatus(x)}</span><span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>`;
+ return `${heading('Events')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}<section class="card reader-entry-list">${items.map(x=>`<button type="button" class="reader-entry" data-reader-excursion="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${tripDateLabel(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(tripOrganizers(x))}</small>${readerCountSummary(excursionCount(x.id))}</span><span class="reader-entry-end">${termStatusHTML(eventStatus(x))}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>`;
 }
 function openReaderEntry(kind,id){
  const target=kind==='member'?'members':kind==='meeting'?'meetings':'excursions';
@@ -193,8 +194,8 @@ function openReaderEntry(kind,id){
 function meetingDetails(id){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  const items=data.meetings.filter(m=>m.id===id);
- return `${readerEntryBack('Stammtische')}${heading('Stammtisch')}${items.length?items.map(m=>`<section class="card meeting-card${m.date<today()?' past-entry':''}">
- <div class="row"><h2>${dateLabel(m.date)}</h2><span class="chip ${m.date>today()?'':'gray'}">${m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen'}</span></div>
+ return `${readerEntryBack('Stammtische')}${heading('Stammtisch')}${items.length?items.map(m=>`<section class="card meeting-card">
+ <div class="row"><h2>${dateLabel(m.date)}</h2>${termStatusHTML(m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen')}</div>
  <p>${esc(m.location||'Gasthaus offen')} · ${esc(timeLabel(m.time))} Uhr</p>
  ${section('members')?`<p class="muted tiny">Organisator: ${esc(memberName(m.organizerId))}</p>`:''}
  ${votePanel(m)}
@@ -209,7 +210,7 @@ function excursionDetails(id){
  if(!section('excursions'))return empty('Events sind nicht freigegeben.');
  const sorted=(data.excursions||[]).filter(x=>x.id===id).sort((a,b)=>Number(!!a.completed)-Number(!!b.completed)||Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'));
  return `${readerEntryBack('Events')}${heading('Event')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
- ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card${eventIsPast(x)?' past-entry':''}"><div class="row"><h2>${esc(x.title)}</h2><span class="chip ${completed?'gray':''}">${eventStatus(x)}</span></div>
+ ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2>${termStatusHTML(eventStatus(x))}</div>
  <p class="muted">${tripDateLabel(x)}</p>${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
  <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Dabei':own?.status==='no'?'Nicht dabei':'Noch offen'}</span></div>
  <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Dabei</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht dabei</button></div>
@@ -645,9 +646,9 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#member-notice-open')){openMemberNotice();return;}
  if(e.target.closest('#member-notice-close')){$('#member-notice-dialog').close();return;}
  if(e.target.closest('#reader-retry,#reader-refresh')){refresh();return;}
- const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
+ const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth===today().slice(0,7)?today():calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
  const nav=e.target.closest('[data-tab]');if(nav){
- readerEntry=null;tab=nav.dataset.tab;scrollTo({top:0,behavior:'instant'});
+ readerEntry=null;tab=nav.dataset.tab;if(tab==='calendar'){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}scrollTo({top:0,behavior:'instant'});
  if(user&&navigator.onLine&&['dashboard','meetings','calendar'].includes(tab)){
   $('#content').innerHTML='<section class="card"><p class="muted">Aktuelle Termine werden geladen …</p></section>';
   refresh();

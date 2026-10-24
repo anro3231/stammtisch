@@ -1,0 +1,31 @@
+FantastiX 3.21.7 – Statusanzeigen und Kalender-Vorauswahl
+
+Installation:
+app.js, lesen.js, index.html, lesen.html, service-worker.js und version.js
+ins bestehende GitHub-Repository übernehmen. Deployment abwarten und die
+installierte App aktualisieren/neu öffnen. Vorhandene cloud-config.js und
+push-config.js beibehalten. Keine SQL-Änderung erforderlich.
+
+Änderungen:
+- Vergangene Stammtische und Events haben wieder denselben neutralen
+  Hintergrund wie andere Einträge, in Admin- und Lesemodus.
+- Stattdessen größere, kräftigere Statusanzeigen: Geplant (blau), Heute/Läuft
+  (grün), In Planung (gelb), Vergangen/Abgeschlossen (dunkelgrau mit weißer Schrift).
+  Die Statuswörter bleiben sichtbar, die Bedeutung hängt nicht allein an Farben.
+- Im Lesekalender ist beim ersten und erneuten Öffnen heute vorausgewählt.
+- Beim Zurückblättern in den aktuellen Monat wird ebenfalls heute ausgewählt.
+  In anderen Monaten beginnt die Vorauswahl weiterhin beim Monatsersten.
+- Manuell ausgewählte Tage bleiben während der automatischen Datenaktualisierung
+  erhalten. Der Heute-Button funktioniert weiterhin.
+- Alle übrigen Funktionen aus 3.21.6 bleiben erhalten. Push/SQL unverändert.
+
+Prüfung:
+Kalenderauswahl in JSDOM mit echten Klicks getestet, einschließlich manuellem
+Datum, Heute-Button, Monatswechsel, erneutem Öffnen, Jahreswechsel und Schalttag.
+Tests für Mitgliederhistorie/Geburtstagsformulare, Statusanzeigen, Adminseiten,
+Dashboard, Push-Hinweis, Kalender und kompakte Leserlisten bestehen.
+
+Optional zum lokalen Testen:
+npm install --no-save --package-lock=false jsdom@26.1.0
+node test-calendar-selection.cjs
+node test-member-updates.cjs

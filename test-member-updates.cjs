@@ -38,9 +38,9 @@ assert.equal(reader.doc.querySelector('#content > section:last-child h2').textCo
 for(const env of [admin,reader]){
  const get=(page)=>env.run(env===admin?(page==='meetings'?'meetingsHTML()':'excursionsHTML()'):(page==='meetings'?'readerEntry=null;meetings()':'readerEntry=null;excursions()'));
  const root=env.doc.createElement('div');root.innerHTML=get('meetings');const meet=id=>root.querySelector(env===admin?`[data-action="meeting-edit"][data-id="${id}"]`:`[data-reader-meeting="${id}"]`);
- assert.ok(meet('m0').classList.contains('past-entry'));assert.equal(meet('today').classList.contains('past-entry'),false);assert.match(meet('today').textContent,/Heute/);assert.equal(meet('future').classList.contains('past-entry'),false);
+ assert.equal(meet('m0').classList.contains('past-entry'),false);assert.ok(meet('m0').querySelector('.meeting-status.status-past')); assert.equal(meet('today').classList.contains('past-entry'),false);assert.match(meet('today').textContent,/Heute/);assert.equal(meet('future').classList.contains('past-entry'),false);
  root.innerHTML=get('events');const event=id=>root.querySelector(env===admin?`[data-action="excursion-edit"][data-id="${id}"]`:`[data-reader-excursion="${id}"]`);
  for(const [id,status] of [['past','Vergangen'],['future','Geplant'],['today','Heute'],['ongoing','Läuft'],['closed','Abgeschlossen'],['open','In Planung']])assert.ok(event(id).textContent.includes(status),id);
- assert.ok(event('past').classList.contains('past-entry'));assert.ok(event('closed').classList.contains('past-entry'));assert.equal(event('ongoing').classList.contains('past-entry'),false);
+ assert.equal(event('past').classList.contains('past-entry'),false);assert.equal(event('closed').classList.contains('past-entry'),false);assert.ok(event('past').querySelector('.meeting-status.status-past'));assert.ok(event('closed').querySelector('.meeting-status.status-closed')); assert.equal(event('ongoing').classList.contains('past-entry'),false);
 }
-admin.dom.window.close();reader.dom.window.close();console.log('PASS member updates: 10/20/26 pagination, draft preservation, valid birthday forms/position, member numbers/escaping, message placement, status and past colors.');
+admin.dom.window.close();reader.dom.window.close();console.log('PASS member updates: 10/20/26 pagination, draft preservation, valid birthday forms/position, member numbers/escaping, message placement, status badges and neutral past rows.');
