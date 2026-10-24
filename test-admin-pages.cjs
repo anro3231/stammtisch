@@ -21,7 +21,7 @@ const fd=values=>({get:k=>values[k]??null,has:k=>Object.hasOwn(values,k),getAll:
 ctx.testFD=fd;
 run(`queueSnapshot=()=>Promise.resolve();markCloudDirty=()=>{};queueSync=()=>{};
  data={members:[{id:'a',name:'Anna',active:true},{id:'b',name:'Berta',active:true}],meetings:[{id:'m1',date:'2020-01-01',time:'18:30',attendance:{a:{status:'present'}}}],excursions:[{id:'x1',title:'Hütte <Berg>',date:'2099-11-01',organizerIds:[]}],fines:[],payments:[]};page='meetings';render();`);
-assert.match(app.innerHTML,/class="reader-entry" data-action="meeting-edit"/);
+assert.match(app.innerHTML,/class="reader-entry(?: past-entry)?" data-action="meeting-edit"/);
 assert.match(app.innerHTML,/1 Dabei/);
 run("meetingForm('m1')");assert.equal(dialog.open,false);
 assert.match(app.innerHTML,/id="admin-entry"/);assert.match(app.innerHTML,/data-form="meeting"/);
