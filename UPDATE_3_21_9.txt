@@ -1,0 +1,39 @@
+FantastiX 3.21.9 – Kennzeichen am App-Icon
+
+Installation:
+app.js, lesen.js, index.html, lesen.html, service-worker.js und version.js aus
+ diesem ZIP übernehmen, Deployment abwarten und die installierte App neu öffnen.
+Eigene cloud-config.js und push-config.js unverändert behalten. Keine SQL-Änderung.
+
+Verhalten:
+- Auf unterstützten Geräten steht eine feste 1 am App-Icon, sobald die jeweils
+  geladene Glockenübersicht ungelesene Meldungen enthält (Admin und Lesemodus).
+- Sobald alle Glockenmeldungen erfolgreich als gelesen markiert wurden, wird
+  das Kennzeichen entfernt. Teilweises Lesen lässt die 1 stehen.
+- Abmelden entfernt das Kennzeichen.
+- Eingehende reguläre Push-Mitteilungen setzen die 1 auch bei geschlossener App.
+  Der reine Admin-Gerätetest erzeugt kein künstliches ungelesenes Kennzeichen.
+- Ein Klick auf eine Push-Mitteilung allein markiert die Glockenmeldungen nicht
+  als gelesen. Das Kennzeichen wird anhand der tatsächlichen Lesestände abgeglichen.
+- Reine Glockenmeldungen, die keinen Push auslösen, lassen sich bei geschlossener
+  App nicht sofort am Icon nachführen. Sie werden beim nächsten Öffnen bzw. dem
+  nächsten erfolgreichen Laden der Glockenübersicht berücksichtigt.
+- Lesen auf einem anderen Gerät wird auf diesem Gerät beim nächsten Abgleich
+  übernommen; dafür wird kein zusätzlicher Hintergrund-Push eingeführt.
+
+iPhone:
+Für Home-Bildschirm-Web-Apps ab iOS 16.4 mit erlaubten Mitteilungen.
+Unter Einstellungen > Mitteilungen > FantastiX müssen auch „Kennzeichen“ erlaubt
+sein. In einem gewöhnlichen Safari-Tab wird kein Home-Bildschirm-Kennzeichen gesetzt.
+
+Technik/Validierung:
+Badging API mit Feature-Erkennung, Fehlerbehandlung und geordneten Aktualisierungen.
+Bei fehlender API bleibt die übrige App unverändert nutzbar. Fehler beim Laden der
+Lesestände löschen das Kennzeichen nicht versehentlich. Im Adminmodus werden beide
+Glockenquellen berücksichtigt, ohne den alten Kontostand eines anderen Logins zu nutzen.
+Simulierte API-/Service-Worker-Tests und die bestehenden Inbox-, Adminseiten-,
+Mitgliederdetails-, Push-Hinweis- und Push-Klicktests bestehen. Kein echtes iPhone getestet.
+
+node test-icon-badge.cjs
+
+Referenz: https://webkit.org/blog/14112/badging-for-home-screen-web-apps/

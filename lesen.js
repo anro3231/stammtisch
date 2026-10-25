@@ -1,4 +1,14 @@
 function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions'].includes(requested)?requested:'dashboard';}
+// App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
+let fxBadgeQueue=Promise.resolve();
+function fxSetIconBadge(unread){
+ fxBadgeQueue=fxBadgeQueue.catch(()=>{}).then(async()=>{
+  if(typeof navigator==='undefined')return;
+  if(unread){if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(1);}
+  else if(typeof navigator.clearAppBadge==='function')await navigator.clearAppBadge();
+  else if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(0);
+ }).catch(()=>{});return fxBadgeQueue;
+}
 let readerEntry=null;
 const memberHistoryLimits=new Map();
 /* FantastiX 3.15.1 · Einheitliche Anwesenheit, Benutzername + Passwort. */
@@ -246,8 +256,18 @@ async function deleteMyBirthday(){
 }
 
 function lastSeenReader(id){const v=readerPresence[id];if(!v)return 'Noch keine Aktivität';const t=new Date(v);if(Date.now()-t.getTime()<180000)return '🟢 Gerade online';return 'Zuletzt online: '+t.toLocaleString('de-AT',{dateStyle:'short',timeStyle:'short'});}
-async function refreshReaderExtras(){if(!cloud||!user||!profile?.member_id)return;try{await cloud.rpc('fantastix_touch_presence');const p=await cloud.from('fantastix_activity').select('member_id,last_seen_at');if(!p.error)readerPresence=Object.fromEntries((p.data||[]).map(x=>[x.member_id,x.last_seen_at]));}catch(e){console.warn('Online-Status SQL 20:',e.message);}
- try{const r=await cloud.from('fantastix_updates').select('id,kind,title,body,created_at').neq('kind','vote').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;readerUpdates=r.data||[];const ids=readerUpdates.map(x=>x.id);readerUpdateReads=new Set();if(ids.length){const q=await cloud.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',user.id);if(!q.error)readerUpdateReads=new Set((q.data||[]).map(x=>x.update_id));}const bell=$('#reader-bell');if(bell)bell.innerHTML='🔔'+(readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length?' <b>'+readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length+'</b>':'');}catch(e){console.warn('Benachrichtigungen SQL 20:',e.message);}}
+async function refreshReaderExtras(){
+ if(!cloud||!user||!profile?.member_id)return;const badgeUser=user.id;
+ try{await cloud.rpc('fantastix_touch_presence');const p=await cloud.from('fantastix_activity').select('member_id,last_seen_at');if(!p.error&&user?.id===badgeUser)readerPresence=Object.fromEntries((p.data||[]).map(x=>[x.member_id,x.last_seen_at]));}catch(e){console.warn('Online-Status SQL 20:',e.message);}
+ try{
+  const r=await cloud.from('fantastix_updates').select('id,kind,title,body,created_at').neq('kind','vote').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;
+  const updates=r.data||[],ids=updates.map(x=>x.id);let reads=new Set();
+  if(ids.length){const q=await cloud.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',badgeUser);if(q.error)throw q.error;reads=new Set((q.data||[]).map(x=>x.update_id));}
+  if(user?.id!==badgeUser)return;readerUpdates=updates;readerUpdateReads=reads;
+  const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;
+  const bell=$('#reader-bell');if(bell)bell.innerHTML='🔔'+(unread?' <b>'+unread+'</b>':'');fxSetIconBadge(unread>0);
+ }catch(e){console.warn('Benachrichtigungen SQL 20:',e.message);}
+}
 function readerBell(){const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;return `<button type="button" id="reader-bell" class="reader-bell" aria-label="Benachrichtigungen">🔔 ${unread?`<b>${unread}</b>`:''}</button>`;}
 function readerInbox(){
  function noticeText(x){
@@ -276,7 +296,7 @@ async function readerMarkRead(ids){
  try{
   const {error}=await cloud.from('fantastix_update_reads').upsert(selected.map(update_id=>({update_id,user_id:userId})),{onConflict:'update_id,user_id'});
   if(error)throw error;
-  if(user?.id===userId)selected.forEach(id=>readerUpdateReads.add(id));
+  if(user?.id===userId){selected.forEach(id=>readerUpdateReads.add(id));fxSetIconBadge(readerUpdates.some(x=>!readerUpdateReads.has(x.id)));}
  }catch(e){if(user?.id===userId)alert('Nachricht konnte nicht als gelesen markiert werden: '+(e.message||String(e)));}
  finally{readerReadBusy=false;if(user?.id===userId)renderApp();}
 }
@@ -560,7 +580,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;fxSetIconBadge(false);profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;

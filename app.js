@@ -1,11 +1,21 @@
 /* Stammtisch+ – private, installierbare Web-App (ohne Build-Tools) */
+// App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
+let fxBadgeQueue=Promise.resolve();
+function fxSetIconBadge(unread){
+ fxBadgeQueue=fxBadgeQueue.catch(()=>{}).then(async()=>{
+  if(typeof navigator==='undefined')return;
+  if(unread){if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(1);}
+  else if(typeof navigator.clearAppBadge==='function')await navigator.clearAppBadge();
+  else if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(0);
+ }).catch(()=>{});return fxBadgeQueue;
+}
 const DATA_KEY = 'stammtischplus.data.v1';
 const CLOUD_KEY = 'stammtischplus.cloud.v1';
 const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.21.8";
+const APP_VERSION = window.FX_VERSION || "3.21.9";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -158,18 +168,25 @@ async function loadMemberAvatars(force=false){
 }
 
 /* Posteingang: Supabase-RPC, keine Browser-Schreibrechte auf andere Konten. */
-let fxAlerts=[],fxAlertBusy=false,fxAlertLastLoad=0;
+let fxAlerts=[],fxAlertBusy=false,fxAlertLastLoad=0,fxBadgeLegacyUser=null,fxBadgeNewUser=null;
 const fxVisibleLegacyAlerts=()=>fxAlerts.filter(x=>!/(stammtisch.?abstimmung|event.?abstimmung)/i.test(String(x.title||'')));
 const fxAlertCount=()=>fxVisibleLegacyAlerts().filter(x=>!x.read_at).length+fxNewAlerts.filter(x=>!x.read_at).length;
+function fxSyncIconBadge(){
+ const id=cloudUser?.id;if(!id)return fxSetIconBadge(false);
+ const oldReady=fxBadgeLegacyUser===id,newReady=fxBadgeNewUser===id;
+ const unread=(oldReady&&fxVisibleLegacyAlerts().some(x=>!x.read_at))||(newReady&&fxNewAlerts.some(x=>!x.read_at));
+ if(unread||(oldReady&&newReady))return fxSetIconBadge(!!unread);
+}
 function fxAlertButton(){const n=fxAlertCount();return `<button class="fx-bell" type="button" data-action="fx-inbox" aria-label="Benachrichtigungen, ${n} ungelesen" title="Benachrichtigungen">🔔${n?`<span class="fx-bell-count">${n>99?'99+':n}</span>`:''}</button>`;}
 async function fxLoadAlerts(force=false){
  if(!cloudClient||!cloudUser)return;
- if(!force&&Date.now()-fxAlertLastLoad<15000)return;
- try{const {data:rows,error}=await cloudClient.rpc('fantastix_inbox_list');if(error)throw error;fxAlerts=rows||[];fxAlertLastLoad=Date.now();if(!$('#dialog')?.open)render();}
+ const badgeUser=cloudUser.id;
+ if(!force&&fxBadgeLegacyUser===badgeUser&&Date.now()-fxAlertLastLoad<15000)return;
+ try{const {data:rows,error}=await cloudClient.rpc('fantastix_inbox_list');if(error)throw error;if(cloudUser?.id!==badgeUser)return;fxAlerts=rows||[];fxBadgeLegacyUser=badgeUser;fxAlertLastLoad=Date.now();fxSyncIconBadge();if(!$('#dialog')?.open)render();}
  catch(e){console.warn('Benachrichtigungen nicht verfügbar (SQL 18 installieren):',e.message);}
 }
 let fxNewAlerts=[];
-async function fxLoadNewAlerts(){if(!cloudClient||!cloudUser)return;try{const r=await cloudClient.from('fantastix_updates').select('id,kind,title,body,created_at').eq('recipient_member_id','ADMIN').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;const ids=(r.data||[]).map(x=>x.id);let reads=[];if(ids.length){const q=await cloudClient.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',cloudUser.id);if(q.error)throw q.error;reads=(q.data||[]).map(x=>x.update_id);}fxNewAlerts=(r.data||[]).map(x=>({...x,read_at:reads.includes(x.id)?x.created_at:null}));}catch(e){console.warn('Neue Meldungen: SQL 20 erforderlich',e.message);}}
+async function fxLoadNewAlerts(){if(!cloudClient||!cloudUser)return;const badgeUser=cloudUser.id;try{const r=await cloudClient.from('fantastix_updates').select('id,kind,title,body,created_at').eq('recipient_member_id','ADMIN').order('created_at',{ascending:false}).limit(100);if(r.error)throw r.error;const ids=(r.data||[]).map(x=>x.id);let reads=[];if(ids.length){const q=await cloudClient.from('fantastix_update_reads').select('update_id').in('update_id',ids).eq('user_id',cloudUser.id);if(q.error)throw q.error;reads=(q.data||[]).map(x=>x.update_id);}if(cloudUser?.id!==badgeUser)return;fxNewAlerts=(r.data||[]).map(x=>({...x,read_at:reads.includes(x.id)?x.created_at:null}));fxBadgeNewUser=badgeUser;fxSyncIconBadge();}catch(e){console.warn('Neue Meldungen: SQL 20 erforderlich',e.message);}}
 async function fxReadNew(id){if(!cloudClient||!cloudUser)return;const list=id?[id]:fxNewAlerts.filter(x=>!x.read_at).map(x=>x.id);if(list.length){const r=await cloudClient.from('fantastix_update_reads').upsert(list.map(update_id=>({update_id,user_id:cloudUser.id})),{onConflict:'update_id,user_id'});if(r.error)return alert(r.error.message);}await fxLoadNewAlerts();fxOpenInbox();}
 function fxInboxHTML(){
  function noticeText(x){
@@ -1048,7 +1065,7 @@ document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest
  case'cloud-download':if(pendingRemote&&confirm('Lokale Daten durch den Cloud-Stand ersetzen? Vorher JSON sichern!')){adoptCloud(pendingRemote);pendingRemote=null;closeModal();}break;
  case'cloud-upload':if(confirm('Lokale Daten als Cloud-Stand speichern? Der vorherige Cloud-Stand wird ersetzt.')){try{await cloudUpload(true);pendingRemote=null;closeModal();render();}catch(e){alert('Upload fehlgeschlagen: '+e.message)}}break;
  case'cloud-unpublish':try{await unpublishPublic();closeModal();cloudForm();}catch(e){alert(e.message);}break;
- case'cloud-logout':if(cloudClient&&confirm('Administrator abmelden? Lokale Daten bleiben auf diesem Gerät.')){await cloudClient.auth.signOut();cloudUser=null;cloudReady=false;cloudStatus='local';syncMessage='Abgemeldet';closeModal();render();}break;
+ case'cloud-logout':if(cloudClient&&confirm('Administrator abmelden? Lokale Daten bleiben auf diesem Gerät.')){await cloudClient.auth.signOut();cloudUser=null;fxBadgeLegacyUser=null;fxBadgeNewUser=null;fxSetIconBadge(false);cloudReady=false;cloudStatus='local';syncMessage='Abgemeldet';closeModal();render();}break;
  }
 });
 document.addEventListener('submit',async ev=>{const form=ev.target;if(!form.matches('form[data-form]'))return;ev.preventDefault();const fd=new FormData(form);switch(form.dataset.form){case'member-birthday':await saveAdminBirthday(String(fd.get('id')),Number(fd.get('month')),Number(fd.get('day')));break;case'member':saveMember(fd);break;case'bulk-2026':saveBulk2026(fd);break;case'meeting':saveMeeting(fd);break;case'excursion':saveExcursion(fd);break;case'fine':saveFine(fd);break;case'payment':savePayment(fd);break;case'cash-balance':saveCashBalance(fd);break;case'cash-expense':saveCashExpense(fd);break;case'cash-settings':saveCashSettings(fd);break;case'cloud-auth':await cloudAuth(fd);break;

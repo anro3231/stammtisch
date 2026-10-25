@@ -1,4 +1,14 @@
-const CACHE='fantastix-v3.21.8';
+const CACHE='fantastix-v3.21.9';
+// App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
+let fxBadgeQueue=Promise.resolve();
+function fxSetIconBadge(unread){
+ fxBadgeQueue=fxBadgeQueue.catch(()=>{}).then(async()=>{
+  if(typeof navigator==='undefined')return;
+  if(unread){if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(1);}
+  else if(typeof navigator.clearAppBadge==='function')await navigator.clearAppBadge();
+  else if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(0);
+ }).catch(()=>{});return fxBadgeQueue;
+}
 const FILES=['./','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung
@@ -31,12 +41,12 @@ self.addEventListener('push',event=>{
  if(kind==='vote_reminder'&&Number.isFinite(Date.parse(payload.deadlineAt))&&Date.now()>=Date.parse(payload.deadlineAt))return;
  const title=String(payload.title||'FantastiX').slice(0,100);
  const body=String(payload.body||'Neue Nachricht').slice(0,220);
- event.waitUntil(self.registration.showNotification(title,{
+ event.waitUntil(Promise.all([kind==='admin_test'?Promise.resolve():fxSetIconBadge(true),self.registration.showNotification(title,{
   body, icon:'./icons/icon-192.png',badge:'./icons/icon-192.png',
   tag:String(payload.tag||('fantastix-'+kind)).slice(0,140),
   data:{audience:kind==='admin_test'?'admin':'reader',tab:kind==='admin_test'?'settings':kind==='event_new'?'excursions':kind==='announcement'?'dashboard':'meetings'},
   renotify:false
- }));
+ })]));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();
