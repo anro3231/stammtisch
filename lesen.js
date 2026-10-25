@@ -1,4 +1,20 @@
 function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions'].includes(requested)?requested:'dashboard';}
+const TRANSFER_ACCOUNT={name:'Dominik Winkler',iban:'DE64100110012624836316',display:'DE64 1001 1001 2624 8363 16'};
+function transferAccountHTML(){return `<section class="card transfer-account" aria-labelledby="transfer-heading"><h2 id="transfer-heading">Konto für Überweisungen</h2><p class="transfer-owner"><small>Kontoinhaber</small><strong>${esc(TRANSFER_ACCOUNT.name)}</strong></p><div class="transfer-copy-row"><div><small>IBAN</small><code class="transfer-iban">${esc(TRANSFER_ACCOUNT.display)}</code></div><button type="button" class="ghost" data-copy-iban data-action="copy-iban">IBAN kopieren</button></div><p class="transfer-copy-status" role="status" aria-live="polite"></p></section>`;}
+async function copyTransferIBAN(button){
+ if(!button||button.disabled)return;const panel=button.closest('.transfer-account'),status=panel?.querySelector('.transfer-copy-status');if(!panel||!status)return;
+ button.disabled=true;button.textContent='IBAN kopieren';let copied=false;
+ try{if(typeof navigator!=='undefined'&&typeof navigator.clipboard?.writeText==='function'){await navigator.clipboard.writeText(TRANSFER_ACCOUNT.iban);copied=true;}}catch{}
+ if(!copied){let field;try{if(typeof document.execCommand==='function'){field=document.createElement('textarea');field.value=TRANSFER_ACCOUNT.iban;field.readOnly=true;field.style.position='fixed';field.style.left='-9999px';document.body.appendChild(field);field.select();field.setSelectionRange(0,field.value.length);copied=document.execCommand('copy')===true;}}catch{}finally{field?.remove();}}
+ if(panel.isConnected){if(copied){button.textContent='Kopiert ✓';status.textContent='IBAN wurde kopiert.';}else{const iban=panel.querySelector('.transfer-iban');try{const selection=window.getSelection(),range=document.createRange();range.selectNodeContents(iban);selection.removeAllRanges();selection.addRange(range);}catch{}status.textContent='Bitte die markierte IBAN manuell kopieren.';}}
+ button.disabled=false;
+}
+function fineListDate(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:'–';}
+function compactFineListHTML(items,admin=false){
+ const fines=[...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));
+ if(!fines.length)return '<p class="muted">Noch keine Strafen.</p>';
+ return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
 function uiSymbol(name,fallback){return `<span class="ui-symbol" aria-hidden="true">${window.FantastixUI?.icon(name)||esc(fallback)}</span>`;}
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
@@ -339,9 +355,10 @@ function readerFineBalancesHTML(){
  return `<section class="card"><h2>Offene Strafen pro Mitglied</h2><div class="list">${readerFineBalances().map(m=>`<div class="item"><div class="details"><strong>${esc(m.name)}</strong><small>${m.count} offene ${m.count===1?'Strafe':'Strafen'}</small></div><strong class="${m.amount?'red':'muted'}">${money(m.amount)}</strong></div>`).join('')||'<p class="muted">Keine Mitglieder vorhanden.</p>'}</div></section>`;
 }
 function cash(){
+ if(!section('cash')&&!section('fines'))return empty('Kassa ist nicht freigegeben.');
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
  return `${heading('Kassa')}${section('cash')?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>`:''}
- ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div><section class="card"><h2>Strafen</h2><div class="list">${data.fines.map(f=>{const settled=data.payments.filter(p=>p.fineId===f.id).reduce((s,p)=>s+n(p.amountCents),0);return `<div class="item"><div class="details"><strong>${esc(memberName(f.memberId))}</strong><small>${esc(f.reason||'Strafe')}</small><small class="fine-date">Erfasst am: ${dateLabel(f.date)}</small></div><div class="right"><strong>${money(f.amountCents)}</strong><small class="muted">${money(Math.max(0,f.amountCents-settled))} offen</small></div></div>`}).join('')||'<p>Keine Strafen</p>'}</div></section>${readerFineBalancesHTML()}`:''}`;
+ ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div><section class="card"><h2>Einzelne Strafen</h2>${compactFineListHTML(data.fines)}</section>${readerFineBalancesHTML()}`:''}${transferAccountHTML()}`;
 }
 // Nur einmal pro Benutzer: Der Server liefert ausschliesslich noch nicht bestaetigte Nachrichten.
 // Keine Nachrichtenliste und kein Menuepunkt fuer Leser.
@@ -652,6 +669,7 @@ document.addEventListener('click',e=>{
  if(memberEntry){openReaderEntry('member',memberEntry.dataset.readerMember);return;}
  const entry=e.target.closest('[data-reader-meeting],[data-reader-excursion]');
  if(entry){openReaderEntry(entry.hasAttribute('data-reader-meeting')?'meeting':'excursion',entry.dataset.readerMeeting??entry.dataset.readerExcursion);return;}
+ const copyIBAN=e.target.closest('[data-copy-iban]');if(copyIBAN){copyTransferIBAN(copyIBAN);return;}
  const moreHistory=e.target.closest('[data-member-history-more]');if(moreHistory){const id=moreHistory.dataset.memberHistoryMore;if(readerEntry?.kind==='member'&&readerEntry.id===id&&section('meetings')){memberHistoryLimits.set(id,(memberHistoryLimits.get(id)||10)+10);renderApp();}return;}
  if(e.target.closest('[data-reader-back]')){const from=readerEntry?.from||tab;readerEntry=null;tab=from;renderApp();scrollTo({top:0,behavior:'instant'});return;}
  const readMessage=e.target.closest('[data-reader-read]');if(readMessage){readerReadOne(readMessage.dataset.readerRead);return;}

@@ -51,7 +51,7 @@ run(`cloudClient={rpc:mockRPC};reloadExcursionVotes=async()=>{excursionVotes=[{e
  const snapshot=JSON.parse(run('JSON.stringify(publicSnapshot({members:true,meetings:true,fines:true}))'));
  assert.equal(snapshot.fines[0].date,run('today()'));
  assert.equal(snapshot.fines[1].date,'2026-01-01');
- assert.match(run('finesHTML()'),/Erfasst am:/);
+ assert.match(run('finesHTML()'),/class="fine-date"/);
  run("fineView(data.fines[0].id)");assert.match(dialog.innerHTML,/Erfasst am/);dialog.close();
  // Existing dialog forms and new page forms share the same submit handler.
  const fakeForm={dataset:{form:'fine'},matches:()=>true,fd:fd({memberId:'a',amount:'3',reason:'Test'})};
@@ -61,8 +61,8 @@ run(`cloudClient={rpc:mockRPC};reloadExcursionVotes=async()=>{excursionVotes=[{e
  vm.runInContext(fs.readFileSync(__dirname+'/lesen.js','utf8').split("document.addEventListener('submit'")[0],readerCtx);
  readerCtx.fixture=snapshot;
  vm.runInContext('data=fixture;',readerCtx);
- assert.match(vm.runInContext('cash()',readerCtx),/Erfasst am:/);
- assert.match(vm.runInContext('cash()',readerCtx),/01\. Jänner 2026|01\. Januar 2026/);
+ assert.match(vm.runInContext('cash()',readerCtx),/class="fine-date"/);
+ assert.match(vm.runInContext('cash()',readerCtx),/01\.01\.2026/);
  assert.equal(alerts.length,0,alerts.join('\n'));
  console.log('PASS admin pages: matching lists, inline forms, retained drafts, discard handling, event votes, form submits, automatic/preserved fine dates and public reader dates.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

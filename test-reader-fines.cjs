@@ -13,7 +13,7 @@ assert.equal(run('readerFineBalances().find(x=>x.id===\'a\').count'),1);
 assert.equal(run('readerFineBalances().find(x=>x.id===\'c\').amount'),0,'Members without fines included');
 let html=run('cash()');
 assert.match(html,/Anna &lt;Test&gt;/);
-assert.match(html,/Erfasst am: 17\. Oktober 2026/);
+assert.match(html,/17\.10\.2026/);
 assert.doesNotMatch(html,/<input|<select|<textarea/,'Reader dates remain read only');
 assert.ok(html.indexOf('Offene Strafen pro Mitglied')>html.indexOf('Teststrafe'),'Member totals appear below individual fines');
 run('data.sections.fines=false');assert.doesNotMatch(run('cash()'),/Offene Strafen pro Mitglied|Teststrafe/,'Fine sharing permissions preserved');

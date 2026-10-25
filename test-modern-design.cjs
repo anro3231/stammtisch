@@ -1,6 +1,7 @@
 // Synthetic accounts only. JSDOM validates real form ownership and click handlers.
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const {JSDOM}=require(process.env.FANTASTIX_JSDOM||'jsdom');
+const appVersion=fs.readFileSync(__dirname+'/version.js','utf8').match(/FX_VERSION='([^']+)'/)[1];
 function environment(file){
  const dom=new JSDOM(fs.readFileSync(__dirname+'/'+(file==='app.js'?'index.html':'lesen.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,''),{url:'https://example.test/app/',runScripts:'outside-only'});
  const w=dom.window;w.scrollTo=()=>{};w.alert=()=>{};w.confirm=()=>true;w.Notification={permission:'granted'};
@@ -23,7 +24,7 @@ for(const file of ['app.js','lesen.js']){
  const event=env.doc.querySelector('.excursion-preview');assert.ok(event);assert.match(event.querySelector('.event-organizer').textContent,/Anna <A>.*Berta.*Gastwirt & Team/);assert.equal(event.querySelector('.event-organizer a'),null);
  assert.match(event.querySelector('.meeting-status').textContent,/Geplant/);assert.ok(event.querySelector('.event-date').textContent.includes('2099'));
  assert.equal(env.doc.querySelectorAll('.next-card .dashboard-open').length,1);assert.equal(env.doc.querySelectorAll('.navinner svg').length,file==='app.js'?8:7);
- assert.ok(env.doc.querySelector('link[href="./modern.css?v=3.22.0"]'));assert.ok(fs.readFileSync(__dirname+'/'+(file==='app.js'?'index.html':'lesen.html'),'utf8').includes('./ui-icons.js?v=3.22.0'));
+ assert.ok(env.doc.querySelector(`link[href="./modern.css?v=${appVersion}"]`));assert.ok(fs.readFileSync(__dirname+'/'+(file==='app.js'?'index.html':'lesen.html'),'utf8').includes('./ui-icons.js?v='+appVersion));
  if(file==='lesen.js'){env.run("data.sections.excursions=false;renderApp()");assert.equal(env.doc.querySelector('.excursion-preview'),null);}
  env.dom.window.close();
 }
