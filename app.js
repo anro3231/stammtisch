@@ -5,7 +5,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.21.7";
+const APP_VERSION = window.FX_VERSION || "3.21.8";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -64,7 +64,7 @@ function loadData(){try{const raw=localStorage.getItem(DATA_KEY);return raw?asse
 let adminEntry=null;
 const memberHistoryLimits=new Map();
 let calendarMonth=today().slice(0,7), calendarSelected=today(), birthdays=[];
-let data=loadData(), page='home', rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
+let data=loadData(), page=(typeof location!=='undefined'&&new URL(location.href).searchParams.get('push')==='test'?'settings':'home'), rankYear=String(new Date().getFullYear()), cloudClient=null, cloudUser=null, cloudBusy=false, syncTimer=null, syncMessage='Nur auf diesem iPhone', cloudStatus='local';
 let snapshotStatus='Noch keine automatische lokale Sicherung', snapshotCount=0, snapshotError=false;
 let snapshotWriteQueue=Promise.resolve();
 function openSnapshotDB(){return new Promise((resolve,reject)=>{if(!('indexedDB' in window))return reject(Error('Dieser Browser unterstützt keine lokalen Sicherungsversionen.'));const req=indexedDB.open(SNAP_DB,1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(SNAP_STORE))db.createObjectStore(SNAP_STORE,{keyPath:'id'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||Error('Datenbank konnte nicht geöffnet werden.'));});}
@@ -407,6 +407,7 @@ function settingsHTML(){
  <a href="./lesen.html" class="ghost" style="text-decoration:none;justify-content:center">Leseransicht öffnen ↗</a></div></section>
  <section class="card"><h2>Abstimmung & Benutzerzugänge</h2><div class="stack"><button class="button" data-action="reader-access">Benutzer verwalten & zuordnen</button><button class="ghost" data-action="vote-settings">Abstimmungsfrist · ${voteDeadlineHours()} Stunden</button><p class="hint">Erinnerung: ${voteReminderEnabled()?voteReminderHours()+' Stunden vor Fristende':'ausgeschaltet'}</p></div></section>
  <section class="card"><h2>Nachrichten an Mitglieder</h2><p class="hint">Neue Nachrichten lösen bei Mitgliedern mit aktivierten Push-Mitteilungen automatisch eine Benachrichtigung aus. Neue Stammtische und neue Events werden bei ihrer Veröffentlichung ebenfalls automatisch per Push angekündigt. Fristerinnerungen lassen sich unter „Abstimmungsfrist“ einrichten.</p><div class="stack"><button class="button" data-action="notice-new">+ Pop-up-Nachricht senden</button><button class="ghost" data-action="notice-manage">Nachrichten verwalten</button></div></section>
+ <section class="card"><h2>Push-Test & Versandstatus</h2><p class="hint">Teste Mitteilungen auf diesem Gerät und prüfe ausstehende, angenommene oder fehlgeschlagene Sendungen.</p><button class="button" type="button" data-action="push-admin" ${active?'':'disabled'}>Push-Test & Versandstatus öffnen</button></section>
  <section class="card"><h2>Cloud-Sicherheit · Version 3.12</h2><p class="hint">Serverseitiger Änderungsverlauf und wöchentliche Cloud-Sicherungen. Nur als Administrator abrufbar.</p><div class="stack"><button class="button" data-action="audit-list">Änderungsverlauf ansehen</button><button class="ghost" data-action="backup-list">Cloud-Backups & Wiederherstellung</button></div></section>
  <section class="card"><h2>Sicherungen</h2><div class="stack"><button class="ghost" data-action="snapshot-list">Lokale Versionen</button><button class="button" data-action="share-json">Backup teilen</button><button class="ghost" data-action="export-json">JSON exportieren</button>
  <label class="ghost" style="text-align:center;cursor:pointer;margin:0">JSON sicher importieren<input id="backupFile" type="file" accept="application/json,.json" style="display:none"></label></div>${snapshotError?`<div class="hint" role="alert">${esc(snapshotStatus)}</div>`:''}</section>`;
@@ -950,12 +951,91 @@ async function unpublishPublic(){
 }
 
 
+/* Admin: eigener Gerätetest und geschützte Versandübersicht. */
+let pushAdmin={userId:null,result:null,busy:false,error:'',notice:''},pushAdminSubscription=null,pushAdminTimer=null,pushAdminRun=0;
+function pushAdminSupported(){return !!(window.isSecureContext&&'Notification'in window&&'serviceWorker'in navigator&&'PushManager'in window&&window.FANTASTIX_PUSH_PUBLIC_KEY);}
+function pushAdminUnavailableReason(){if(!window.isSecureContext)return 'Push benötigt einen sicheren HTTPS-Aufruf.';if(!window.FANTASTIX_PUSH_PUBLIC_KEY)return 'Der öffentliche Push-Schlüssel fehlt. Bitte die vorhandene push-config.js prüfen.';return 'Push ist hier nicht verfügbar. Auf dem iPhone: FantastiX in Safari zum Home-Bildschirm hinzufügen und die installierte App öffnen.';}
+function pushAdminPermission(){return typeof Notification==='undefined'?'unsupported':Notification.permission;}
+function pushAdminCurrent(userId,run){return cloudReady&&cloudUser?.id===userId&&pushAdmin.userId===userId&&pushAdminRun===run&&!!$('#push-admin-panel')&&$('#dialog').open;}
+function stopPushAdmin(){if(pushAdminTimer!==null){clearInterval(pushAdminTimer);pushAdminTimer=null;}pushAdminRun++;pushAdminSubscription=null;pushAdmin={userId:null,result:null,busy:false,error:'',notice:''};}
+function pushAdminDate(value){if(!value)return '–';const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleString('de-AT',{timeZone:'Europe/Vienna'}):'–';}
+function pushAdminStateLabel(row){return ({pending:'Ausstehend',sending:'In Versand',sent:'Vom Push-Dienst angenommen',inactive:'Nicht mehr aktuell'})[row.state]||(row.state==='failed'?(row.retry_scheduled?'Fehler · weiterer Versuch geplant':'Fehlgeschlagen · keine weiteren Versuche'):'Unbekannter Status');}
+function pushAdminHTML(){
+ const result=pushAdmin.result,permission=pushAdminPermission(),supported=pushAdminSupported();
+ const ready=!!(result?.device_registered&&pushAdminSubscription&&permission==='granted');
+ const disabled=pushAdmin.busy?'disabled':'';
+ const device=!supported?pushAdminUnavailableReason():permission==='denied'?'Mitteilungen sind blockiert. Bitte in den Browser- oder Geräteeinstellungen erlauben.':ready?'Dieses Gerät ist für dein Admin-Konto registriert.':permission==='granted'?'Mitteilungen sind erlaubt. Dieses Gerät bitte noch für dein Admin-Konto registrieren.':'Mitteilungen für dieses Gerät wurden noch nicht erlaubt.';
+ return `<section class="push-admin-device"><h3>Test an dieses Gerät</h3><p>${esc(device)}</p><div class="stack">${supported&&permission!=='denied'?`<button class="ghost" type="button" data-action="push-admin-enable" ${disabled}>${ready?'Geräteregistrierung aktualisieren':'Dieses Gerät für Push aktivieren'}</button>`:''}<button class="button" type="button" data-action="push-admin-test" ${disabled||!ready?'disabled':''}>Testnachricht an dieses Gerät senden</button><button class="ghost" type="button" data-action="push-admin-refresh" ${disabled}>Versandstatus aktualisieren</button></div><p class="hint">Nur dieses Gerät erhält den Test. Versand beim nächsten regulären Lauf, normalerweise innerhalb von zwei Minuten. Zwischen Tests mindestens eine Minute warten.</p></section>
+ ${pushAdmin.error?`<p class="notice danger-note" role="alert">${esc(pushAdmin.error)}</p>`:''}${pushAdmin.notice?`<p class="notice" role="status">${esc(pushAdmin.notice)}</p>`:''}
+ ${pushAdmin.busy?'<p class="hint" role="status">Wird aktualisiert …</p>':''}
+ ${result?`<section class="push-admin-overview"><h3>Push-Ereignisse der letzten ${Number(result.scope_days)||30} Tage</h3><p class="hint">Stammtisch-, Event-, Nachrichten- und Test-Pushs. Separat eingerichtete Fristerinnerungen sind hier nicht enthalten.</p><div class="push-admin-counts">${[['pending','Ausstehend'],['sending','In Versand'],['sent','Angenommen'],['failed','Fehler'],['inactive','Nicht mehr aktuell']].map(([key,label])=>`<div><strong>${n(result.counts?.[key])}</strong><span>${label}</span></div>`).join('')}</div><p class="hint">${n(result.registered_devices)} registrierte Geräte insgesamt · ${n(result.own_devices)} für dein Konto.<br>„Angenommen“ bestätigt die Annahme durch den Push-Dienst, nicht die Anzeige oder das Lesen am Gerät.</p><p class="hint">Letzter erfolgreicher Abruf der Warteschlange durch den Versandserver: ${result.last_server_poll?esc(pushAdminDate(result.last_server_poll)):'Noch kein Abruf seit Einrichtung.'}</p>${result.server_poll_stale?'<p class="notice warning" role="status">Seit mehr als sechs Minuten wurde kein erfolgreicher Abruf erfasst. Bitte den Zeitplan und die Logs der Versandfunktion prüfen.</p>':''}<p class="hint">Stand: ${esc(pushAdminDate(result.checked_at))}. Automatische Aktualisierung alle 10 Sekunden, solange dieses Fenster geöffnet ist.</p><h3>Letzte ${result.deliveries?.length||0} Zustellungen (maximal 100)</h3><div class="push-admin-list">${(result.deliveries||[]).map(row=>`<article class="push-admin-row"><div class="row"><strong>${esc(row.title)}</strong><span class="chip ${row.state==='failed'?'red':row.state==='sent'?'':'gray'}">${esc(pushAdminStateLabel(row))}</span></div><p>${esc(row.recipient)} · Gerät ${esc(row.device_id)}${row.kind==='admin_test'?' · Eigener Gerätetest':''}</p><small>Erstellt: ${esc(pushAdminDate(row.created_at))} · Versuche: ${n(row.attempts)}</small>${row.sent_at?`<small>Angenommen: ${esc(pushAdminDate(row.sent_at))}</small>`:''}${row.device_removed?'<small>Ungültiges Geräteabo wurde entfernt.</small>':''}${row.retry_scheduled?`<small>Nächster Versuch frühestens: ${esc(pushAdminDate(row.next_attempt_at))}</small>`:''}${row.last_error?`<p class="push-admin-error">${esc(row.last_error)}</p>`:''}</article>`).join('')||'<p class="muted">Noch keine Zustellungen im angezeigten Zeitraum.</p>'}</div></section>`:''}`;
+}
+function paintPushAdmin(){const panel=$('#push-admin-panel');if(!panel)return;const action=document.activeElement?.dataset?.action;panel.innerHTML=pushAdminHTML();if(action)panel.querySelector(`[data-action="${action}"]`)?.focus({preventScroll:true});}
+async function loadPushAdmin(preserveError=false){
+ if(!cloudReady||!cloudUser||pushAdmin.busy||!$('#push-admin-panel'))return;
+ const userId=cloudUser.id,run=pushAdminRun;pushAdmin.busy=true;paintPushAdmin();
+ try{const {data:result,error}=await cloudClient.rpc('fantastix_admin_push_status',{p_endpoint:pushAdminSubscription?.endpoint||null});if(error)throw error;if(!result||!Array.isArray(result.deliveries))throw Error('Unbekannte Antwort des Versandstatus.');
+  if(!pushAdminCurrent(userId,run))return;pushAdmin.result=result;if(!preserveError)pushAdmin.error='';
+ }catch(e){if(pushAdminCurrent(userId,run))pushAdmin.error='Versandstatus konnte nicht geladen werden: '+(e.message||String(e))+' Falls die Einrichtung fehlt, bitte SQL 27 installieren.';}
+ finally{if(pushAdminCurrent(userId,run)){pushAdmin.busy=false;paintPushAdmin();}}
+}
+async function openPushAdmin(){
+ if(!cloudReady||!cloudUser||!cloudClient)return alert('Bitte zuerst als Administrator mit der Cloud verbinden und synchronisieren.');
+ stopPushAdmin();const userId=cloudUser.id,run=pushAdminRun;pushAdmin.userId=userId;
+ modal('Push-Test & Versandstatus','<div id="push-admin-panel"></div>');paintPushAdmin();
+ if(pushAdminSupported()&&pushAdminPermission()==='granted'){
+  try{const registration=await navigator.serviceWorker.getRegistration(new URL('./',location.href).href);const sub=await registration?.pushManager.getSubscription();if(!pushAdminCurrent(userId,run))return;pushAdminSubscription=sub||null;}
+  catch{if(!pushAdminCurrent(userId,run))return;}
+ }
+ if(!pushAdminCurrent(userId,run))return;await loadPushAdmin();
+ if(pushAdminCurrent(userId,run))pushAdminTimer=setInterval(()=>{if(!document.hidden)loadPushAdmin(true);},10000);
+}
+async function adminPushRegistration(){
+ const registration=await navigator.serviceWorker.register(new URL('./service-worker.js',location.href).href,{scope:'./',updateViaCache:'none'});
+ if(registration.active?.state==='activated')return registration;
+ await new Promise((resolve,reject)=>{
+  const worker=registration.installing||registration.waiting||registration.active;
+  let settled=false;const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);worker?.removeEventListener('statechange',check);navigator.serviceWorker.removeEventListener('controllerchange',check);error?reject(error):resolve();};
+  const check=()=>{if(registration.active?.state==='activated')finish();else if(worker?.state==='redundant')finish(Error('Der Service Worker konnte nicht aktiviert werden. Bitte die App aktualisieren.'));};
+  const timer=setTimeout(()=>finish(Error('Der Service Worker wurde nicht rechtzeitig aktiv. Bitte die App neu öffnen.')),20000);
+  worker?.addEventListener('statechange',check);navigator.serviceWorker.addEventListener('controllerchange',check);check();
+ });return registration;
+}
+function adminPushKey(){const text=String(window.FANTASTIX_PUSH_PUBLIC_KEY||'');const raw=atob((text+'='.repeat((4-text.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+async function enableAdminPush(){
+ if(!cloudReady||!cloudUser||pushAdmin.busy||!$('#push-admin-panel'))return;
+ if(!pushAdminSupported())return;
+ const userId=cloudUser.id,run=pushAdminRun;pushAdmin.busy=true;pushAdmin.error='';
+ try{
+  // Permission prompt stays in the user-click call stack (also required by iOS).
+  const permission=await Notification.requestPermission();if(!pushAdminCurrent(userId,run))return;
+  if(permission!=='granted')throw Error('Mitteilungen wurden nicht erlaubt. Bitte die Geräteeinstellungen prüfen.');
+  paintPushAdmin();const reg=await adminPushRegistration();if(!pushAdminCurrent(userId,run))return;
+  let sub=await reg.pushManager.getSubscription();const key=adminPushKey();
+  if(sub?.options?.applicationServerKey){const current=new Uint8Array(sub.options.applicationServerKey);if(current.length!==key.length||current.some((v,i)=>v!==key[i])){await sub.unsubscribe();sub=null;}}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+  if(!pushAdminCurrent(userId,run))return;
+  const {error}=await cloudClient.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;
+  if(!pushAdminCurrent(userId,run))return;pushAdminSubscription=sub;pushAdmin.notice='Dieses Gerät wurde für dein Admin-Konto registriert.';
+ }catch(e){if(pushAdminCurrent(userId,run))pushAdmin.error='Push-Aktivierung fehlgeschlagen: '+(e.message||String(e));}
+ finally{if(pushAdminCurrent(userId,run)){pushAdmin.busy=false;await loadPushAdmin(true);}}
+}
+async function sendAdminPushTest(){
+ if(!cloudReady||!cloudUser||pushAdmin.busy||!$('#push-admin-panel'))return;
+ if(!pushAdmin.result?.device_registered||!pushAdminSubscription||pushAdminPermission()!=='granted')return;
+ const userId=cloudUser.id,run=pushAdminRun;pushAdmin.busy=true;pushAdmin.error='';pushAdmin.notice='';paintPushAdmin();
+ try{const {error}=await cloudClient.rpc('fantastix_admin_push_test',{p_endpoint:pushAdminSubscription.endpoint});if(error)throw error;
+  if(!pushAdminCurrent(userId,run))return;pushAdmin.notice='Testnachricht für dieses Gerät eingereiht. Bitte bis zum nächsten Versandlauf warten (normalerweise höchstens zwei Minuten).';
+ }catch(e){if(pushAdminCurrent(userId,run))pushAdmin.error='Test konnte nicht eingereiht werden: '+(e.message||String(e));}
+ finally{if(pushAdminCurrent(userId,run)){pushAdmin.busy=false;await loadPushAdmin(true);}}
+}
+
 /* Interaktionen */
 document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
  const action=el.dataset.action,id=el.dataset.id;if(action==='fx-new-read'){fxReadNew(Number(id));return;}if(action==='fx-new-read-all'){fxReadNew();return;}if(el.dataset.page){if(!leaveAdminEntry())return;page=el.dataset.page;render();if(page==='members')loadOnlinePresenceAdmin().catch(console.warn);window.scrollTo({top:0,behavior:'instant'});return;}
- switch(action){case'fx-inbox':await fxOpenInbox();break;case'fx-read':await fxMarkAlerts(Number(id));break;case'fx-new-read':await fxReadNew(Number(id));break;case'fx-read-all':await fxMarkAlerts(null);break;case'close':if($('#dialog').open)closeModal();else leaveAdminEntry();break;case'admin-entry-back':leaveAdminEntry();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-history-more':loadMoreMemberHistory(id);break;case'member-birthday-remove':if(confirm('Geburtstag dieses Mitglieds entfernen?'))await saveAdminBirthday(id,null,null);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
+ switch(action){case'push-admin':await openPushAdmin();break;case'push-admin-refresh':await loadPushAdmin();break;case'push-admin-enable':await enableAdminPush();break;case'push-admin-test':await sendAdminPushTest();break;case'fx-inbox':await fxOpenInbox();break;case'fx-read':await fxMarkAlerts(Number(id));break;case'fx-new-read':await fxReadNew(Number(id));break;case'fx-read-all':await fxMarkAlerts(null);break;case'close':if($('#dialog').open)closeModal();else leaveAdminEntry();break;case'admin-entry-back':leaveAdminEntry();break;case'member-new':memberForm();break;case'member-edit':memberForm(id);break;case'member-history-more':loadMoreMemberHistory(id);break;case'member-birthday-remove':if(confirm('Geburtstag dieses Mitglieds entfernen?'))await saveAdminBirthday(id,null,null);break;case'member-delete-confirm':await permanentlyDeleteMember(id);break;case'bulk-2026':bulk2026Form();break;case'meeting-new':if(!data.members.filter(m=>m.active!==false).length){alert('Bitte zuerst ein aktives Mitglied anlegen.');memberForm();}else meetingForm();break;case'meeting-edit':meetingForm(id);break;case'excursion-new':excursionForm();break;case'excursion-edit':excursionForm(id);break;case'excursion-admin-vote':await adminExcursionVote(id,el.dataset.member,el.dataset.status);break;case'attend':attStatus(id,el.dataset.status);break;case'fine-new':fineForm();break;case'fine-pay':payForm(id);break;case'fine-view':fineView(id);break;case'cash-balance':cashBalanceForm();break;case'cash-expense':cashExpenseForm();break;case'cash-settings':cashSettingsForm();break;case'cash-reverse':{const tx=cash().transactions.find(t=>t.id===id);if(tx&&['expense','adjustment'].includes(tx.type)&&confirm('Diese Buchung stornieren?')){cash().transactions=cash().transactions.filter(t=>t.id!==id);persist();}break;}case'rank-year':rankYear=el.dataset.year;render();break;case'export-json':exportJSON();break;case'share-json':await shareJSON();break;case'snapshot-list':await snapshotList();break;case'snapshot-restore':await snapshotRestore(el.dataset.snapshot);break;
  case'excursion-delete':{const x=data.excursions.find(v=>v.id===id);if(x&&confirm('Event endgültig löschen? Bisherige Zusagen werden nicht mehr angezeigt.')){data.excursions=data.excursions.filter(v=>v.id!==id);closeModal();persist();}break;}
  case'meeting-delete':{const m=data.meetings.find(x=>x.id===id),linked=data.fines.filter(f=>f.meetingId===id);if(!m)break;if(linked.some(f=>finePaid(f.id)>0))return alert('Stammtisch mit bereits bezahlten Strafen kann nicht gelöscht werden.');if(confirm('Diesen Stammtisch und seine unbezahlten Abwesenheitsstrafen endgültig löschen?')){data.meetings=data.meetings.filter(x=>x.id!==id);data.fines=data.fines.filter(f=>f.meetingId!==id);closeModal();persist();
  if(!navigator.onLine||!cloudUser||!cloudReady)alert('Lokal gelöscht. Im Mitgliederportal verschwindet der Stammtisch, sobald dein Gerät wieder online ist und der neue Cloud-Stand synchronisiert wurde.');
@@ -982,6 +1062,8 @@ document.addEventListener('submit',async ev=>{const form=ev.target;if(!form.matc
   catch(e){alert('Veröffentlichen fehlgeschlagen: '+e.message);}
   break;
  }}});
+$('#dialog').addEventListener('close',()=>{if(!$('#dialog').open)stopPushAdmin();});
+navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type!=='fantastix-admin-push-open'||($('#dialog').open&&!$('#push-admin-panel'))||!leaveAdminEntry())return;page='settings';render();if(cloudReady&&cloudUser)openPushAdmin();});
 document.addEventListener('input',e=>{if(adminEntry&&e.target.closest('#admin-entry form'))adminEntry.dirty=true;});
 document.addEventListener('change',async e=>{const t=e.target;if(adminEntry&&t.closest('#admin-entry form'))adminEntry.dirty=true;if(t?.id==='admin-ranking-year'){rankYear=t.value;render();return;}if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
  const file=e.target.files?.[0];if(!file)return;

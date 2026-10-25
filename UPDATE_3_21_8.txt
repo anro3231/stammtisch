@@ -1,0 +1,73 @@
+FantastiX 3.21.8 – Admin-Push-Test und Versandstatus
+
+Installation:
+1. 27_ADMIN_PUSH_TEST_STATUS.sql einmal im bestehenden Supabase SQL Editor ausführen.
+2. app.js, index.html, service-worker.js, version.js und lesen.html aus diesem ZIP
+   ins bestehende GitHub-Repository übernehmen. Eigene cloud-config.js und
+   push-config.js unverändert behalten. Die Adminseite lädt jetzt ebenfalls den
+   vorhandenen öffentlichen Push-Schlüssel aus push-config.js.
+3. Deployment abwarten, App aktualisieren und neu öffnen.
+4. Als Administrator anmelden/synchronisieren. Unter Mehr > Push-Test & Versandstatus
+   zunächst „Dieses Gerät für Push aktivieren“ wählen, danach die Testnachricht senden.
+
+Die Edge Function rapid-task, deren Secrets und der bestehende Zwei-Minuten-Zeitplan
+bleiben unverändert. Der Test läuft über denselben Server und Versandweg wie normale
+Push-Nachrichten. Er wartet auf den nächsten regulären Lauf; er wird nicht sofort
+als zugestellt gemeldet. Bei größerem Rückstau oder Versandproblemen kann es länger dauern.
+
+Gerätetest:
+- Nur das aktuell registrierte Gerät erhält den Test, nicht alle Geräte des Kontos
+  und keine anderen Mitglieder. Die Zuordnung wird serverseitig geprüft.
+- Vor dem Registrieren wird nur nach einem ausdrücklichen Klick die Systemfreigabe
+  angefordert. Auf dem iPhone muss die App über den Home-Bildschirm gestartet werden.
+- Ein Geräteabo ist wie bisher jeweils dem zuletzt registrierten Konto zugeordnet.
+  Auf gemeinsam genutzten Browsern kann die Registrierung zum aktuellen Admin wechseln.
+- Ein Test pro Gerät und Minute. Nicht abgeholte Tests werden nach einer Stunde
+  nicht mehr verschickt und als „Nicht mehr aktuell“ angezeigt.
+- Beim Antippen der Test-Mitteilung öffnet sich der Adminbereich.
+
+Versandstatus:
+- Übersicht für Stammtisch-, Event-, Nachrichten- und Test-Pushs.
+  Der getrennte automatische Fristerinnerungsversand ist NICHT enthalten.
+- Betrachtet Push-Ereignisse, die in den letzten 30 Tagen angelegt wurden.
+- Zähler für ausstehend, in Versand, vom Push-Dienst angenommen, Fehler und nicht
+  mehr aktuell. Vor dem ersten Serverabruf noch nicht materialisierte Zustellungen
+  werden ebenfalls als ausstehend berücksichtigt.
+- Letzte 100 Zustellungen mit Empfänger, Gerätekennung, Status, Versuchsanzahl,
+  Zeitstempeln, nächstem Wiederholungsversuch und letztem Fehler.
+- „Angenommen“ bestätigt die Annahme durch den Push-Dienst. Es ist kein Nachweis,
+  dass die Nachricht am Handy sichtbar war oder gelesen wurde.
+- Aktualisierung alle zehn Sekunden bei geöffnetem, sichtbarem Fenster sowie manuell.
+- Letzter erfolgreicher Warteschlangenabruf durch den Versandserver. Hinweis nach
+  mehr als sechs Minuten ohne Abruf; hilft bei Zeitplan-/Funktionsproblemen.
+- Wenn der Versender ein ungültiges Abo entfernt (z. B. HTTP 410), bleibt dessen
+  bisherige Versandhistorie ab Installation dieser Migration in einer privaten Tabelle
+  nachvollziehbar. Bereits früher gelöschte Historie lässt sich nicht rekonstruieren.
+- Endpunkte und Push-Schlüssel werden nicht in der Übersicht ausgegeben. URLs und
+  Bearer-Tokens im Fehlertext werden ausgeblendet. Alle APIs prüfen serverseitig
+  die Administratorrolle; die neuen internen Tabellen sind für Leser gesperrt.
+
+Bestehende Stammtisch-, Event- und Nachrichten-Pushs sowie der persönliche Hinweis
+für Organisatoren bleiben erhalten. SQL 27 enthält die kompatible Aktualisierung
+von Empfängerprüfung, Claim und Finish. Frühere SQL-Dateien müssen nicht erneut
+zusätzlich ausgeführt werden, wenn das bisherige System bereits funktioniert.
+SQL 27 ist erneut ausführbar und setzt Versandwarteschlange oder Historie nicht zurück.
+
+Validierung (synthetische Daten, keine echten Mitteilungen verschickt):
+- SQL in PGlite: Adminrechte, genau ein Gerät trotz mehrerer Kontogeräte,
+  Rate-Limit, Warteschlange, Erfolg/Fehler/Wiederholung, ungültige Abos,
+  Ablauf, Serverabruf, geschützte Daten und erneute Installation.
+- UI in JSDOM: ausdrückliche Freigabe, Aktivierung, Gerätetest, Fehlerdarstellung,
+  automatisches Aktualisieren, Stoppen beim Schließen, verspätete Antworten nach
+  Kontowechsel und blockierte Berechtigungen.
+- Service Worker mit simulierten Push- und Klickereignissen: Admin-Test öffnet
+  Adminmodus; andere Nachrichten öffnen weiterhin die passende Leseransicht.
+- Bestehende Tests für Adminseiten, Mitglieder, Kalender, Countdown, Inbox,
+  Dashboard und Push-Hinweis bestehen.
+- Keine Live-Datenbank geändert und kein echtes Endgerät getestet.
+
+Optionale Test-Abhängigkeiten:
+npm install --no-save --package-lock=false jsdom@26.1.0 @electric-sql/pglite@0.3.14
+node test-admin-push-server.cjs
+node test-admin-push-client.cjs
+node test-admin-push-worker.cjs

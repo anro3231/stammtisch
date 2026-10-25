@@ -4,7 +4,7 @@ const source=fs.readFileSync(__dirname+'/app.js','utf8');
 const storage=new Map(),listeners={},alerts=[],calls=[];
 let confirmation=true;
 const app={innerHTML:''},nav={innerHTML:''};
-const dialog={open:false,innerHTML:'',showModal(){this.open=true;},close(){this.open=false;}};
+const dialog={open:false,innerHTML:'',addEventListener(){},showModal(){this.open=true;},close(){this.open=false;}};
 const counter={textContent:''},voteButton={disabled:false};
 const form={elements:{id:{value:'x1'}}};
 const editor={querySelector:s=>s==='form[data-form="excursion"]'?form:s==='#excursion-vote-count'?counter:null,querySelectorAll:s=>s==='[data-action="excursion-admin-vote"]'?[voteButton]:[]};
