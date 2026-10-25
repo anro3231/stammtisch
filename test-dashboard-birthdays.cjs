@@ -33,7 +33,7 @@ for(const env of [admin,reader]){
  assert.match(recent,/HEUTE/);assert.doesNotMatch(recent,/ALT3|ALT4/);
  assert.match(html,/metric beer-countdown/);assert.doesNotMatch(html,/beer-countdown beer-today|Heute gibt es Lecker Bierchen!/);
  env.run("data.meetings.push({id:'next',date:'2026-10-20'})");
- assert.match(dashboard(),/Tage bis zum Lecker Bierchen[\s\S]*?class="value">2</);
+ assert.match(dashboard(),/Lecker Bierchen[\s\S]*?class="value">2 Tage</);
 }
 const alerts=[];admin.ctx.alert=message=>alerts.push(message);
 admin.run("cloudReady=true;cloudUser={id:'admin'};birthdays=[{member_id:'a',month:2,day:29}];memberForm('a')");
