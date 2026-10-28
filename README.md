@@ -24,6 +24,14 @@ Die Dateien werden über GitHub Pages veröffentlicht; ein Build-Schritt ist nic
 
 Die Supabase-Migration `fantastix_unsure_votes` wurde für den dritten Abstimmungsstatus eingerichtet. Neue SQL-Dateien werden nicht im Repository abgelegt; die Migration ist in der Supabase-Migrationshistorie dokumentiert.
 
+## Lesemodus ab Version 3.23.1
+
+Menüs zeigen den bereits geladenen Stand sofort an. Bei Bedarf werden aktuelle Daten im Hintergrund geladen; kurz aufeinanderfolgende Menüwechsel teilen sich einen laufenden Abruf und verwenden einen weniger als 30 Sekunden alten Stand erneut. Profil, Veröffentlichung und Fristen sowie unabhängige Zusatzdaten werden parallel angefragt. Anwesenheit und Posteingang werden über einen gemeinsamen Hintergrundabruf aktualisiert; Push-Abonnements werden nicht bei jedem Menüwechsel erneut registriert.
+
+Nach Abstimmungen oder Speichern wird weiterhin ein neuer Datenabruf erzwungen. Hintergrundaktualisierungen überschreiben keine ungespeicherten Eingaben. Bei vorübergehenden Netzwerkfehlern bleibt der bisherige Stand sichtbar; bei bestätigtem Entzug der Freigabe wird die Leseransicht geschlossen.
+
+Prüfung mit simulierten langsamen Antworten: `node test-reader-speed.cjs` (benötigt `jsdom`).
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.

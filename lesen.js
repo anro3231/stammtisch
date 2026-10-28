@@ -73,10 +73,11 @@ function rsvpCounts(m){
 function avatarFor(id){const url=avatarUrls[id];return url?`<img class="member-photo" data-profile-photo tabindex="0" role="button" aria-label="Profilbild von ${esc(memberName(id))} vergrößern" src="${esc(url)}" alt="${esc(memberName(id))}" loading="lazy">`:`<span class="member-photo member-photo-placeholder">${esc((memberName(id)||'?').trim().slice(0,1).toUpperCase())}</span>`;}
 async function loadAvatars(force=false){
  if(!cloud||!user||!profile?.member_id||(!force&&Date.now()-avatarLoadedAt<5*60*1000))return;
+ const avatarUser=user.id;
  const {data:rows,error}=await cloud.rpc('fantastix_avatar_directory');if(error)throw error;
  const result={};
  await Promise.all((rows||[]).map(async row=>{const signed=await cloud.storage.from('fantastix-avatars').createSignedUrl(row.object_name,3600);if(!signed.error&&signed.data?.signedUrl)result[row.member_id]=signed.data.signedUrl;}));
- avatarUrls=result;avatarLoadedAt=Date.now();
+ if(user?.id!==avatarUser)return;avatarUrls=result;avatarLoadedAt=Date.now();
 }
 function fileToJpeg(file){return new Promise((resolve,reject)=>{
  if(!file||!file.type.startsWith('image/')||file.size>12*1024*1024)return reject(Error('Bitte ein Bild mit maximal 12 MB auswählen.'));
@@ -264,9 +265,10 @@ function myBirthday(){return birthdays.find(b=>b.member_id===profile?.member_id)
 function birthdayText(b){return b?`${String(b.day).padStart(2,'0')}.${String(b.month).padStart(2,'0')}.`:'Nicht eingetragen';}
 async function loadBirthdays(){
  if(!cloud||!user||!profile?.member_id)return;
+ const birthdayUser=user.id;
  const {data:rows,error}=await cloud.from('fantastix_birthdays').select('member_id,month,day');
  if(error)throw error;
- birthdays=rows||[];
+ if(user?.id===birthdayUser)birthdays=rows||[];
 }
 function lastSeenReader(id){const v=readerPresence[id];if(!v)return 'Noch keine Aktivität';const t=new Date(v);if(Date.now()-t.getTime()<180000)return '🟢 Gerade online';return 'Zuletzt online: '+t.toLocaleString('de-AT',{dateStyle:'short',timeStyle:'short'});}
 async function refreshReaderExtras(){
@@ -482,9 +484,9 @@ async function unregisterReminderSubscription(sub){
 }
 async function detectPushSubscription(){
  if(!user||!profile?.member_id)return;
- if(!pushSupported()){pushEnabled=false;if(tab==='dashboard'&&data)renderApp();else showPushOptIn();return;}
+ if(!pushSupported()){pushEnabled=false;if(tab==='dashboard'&&data)renderRefreshedReader(true);else showPushOptIn();return;}
  try{const reg=await activePushRegistration();const sub=await reg.pushManager.getSubscription();pushEnabled=!!sub&&Notification.permission==='granted';if(pushEnabled){const {error}=await cloud.rpc('fantastix_push_subscribe',{p_subscription:sub.toJSON()});if(error)throw error;await registerReminderSubscription(sub);}}catch(e){pushEnabled=false;console.warn('Push-Status:',e);}
- if(tab==='dashboard'&&data)renderApp();else showPushOptIn();
+ if(tab==='dashboard'&&data)renderRefreshedReader(true);else showPushOptIn();
 }
 async function enablePush(){
  if(pushBusy||!cloud||!user||!profile?.member_id)return;
@@ -521,34 +523,71 @@ async function initClient(){
  cloud=createClient(cfg.url.replace(/\/$/,''),cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
  return cloud;
 }
-async function refresh(){
+const READER_REFRESH_INTERVAL=30000;
+let readerRefreshInFlight=null,readerLastSync=0,readerLastSyncUser=null,readerPushCheckedAt=0,readerPushCheckedUser=null;
+function readerRefreshCurrent(run){return readerRefreshInFlight===run&&user?.id===run.userId;}
+function renderRefreshedReader(background){
+ // A background update must not replace a note or password while it is being edited.
+ const focused=document.activeElement?.matches('input,textarea,select')&&document.activeElement.closest('#content');
+ const draft=[...document.querySelectorAll('#content input:not([type="hidden"]),#content textarea')].some(input=>input.value!==input.defaultValue);
+ if(!background||!focused&&!draft)renderApp();
+}
+async function refresh(options={}){
  if(!cloud||!user)return renderGate();
+ const background=options.background===true,userId=user.id;
+ if(readerRefreshInFlight?.userId===userId){
+  if(background)return readerRefreshInFlight.promise;
+  // A vote/save needs a read started after the write, even if a background read was running.
+  await readerRefreshInFlight.promise;
+  if(user?.id!==userId)return;
+  return refresh(options);
+ }
+ if(background&&readerLastSyncUser===userId&&Date.now()-readerLastSync<READER_REFRESH_INTERVAL)return;
+ const run={userId,promise:null};readerRefreshInFlight=run;
+ run.promise=refreshReaderData(run,background).finally(()=>{if(readerRefreshInFlight===run)readerRefreshInFlight=null;});
+ return run.promise;
+}
+async function refreshReaderData(run,background){
  try{
-  const {data:account,error:accountError}=await cloud.from('fantastix_reader_profiles').select('member_id,email,username').eq('user_id',user.id).maybeSingle();
-  if(accountError)throw accountError;profile=account;
-  if(!profile?.member_id){data=null;return renderGate();}
-  const [pub,windows]=await Promise.all([
+  const [accountResult,pub,windows]=await Promise.all([
+   cloud.from('fantastix_reader_profiles').select('member_id,email,username').eq('user_id',run.userId).maybeSingle(),
    cloud.from('fantastix_public').select('content,published_at').eq('id','main').eq('is_published',true).maybeSingle(),
    cloud.rpc('fantastix_reader_deadlines')
   ]);
+  if(!readerRefreshCurrent(run))return;
+  if(accountResult.error)throw accountResult.error;
+  profile=accountResult.data;
+  if(!profile?.member_id){data=null;return renderGate();}
   if(pub.error)throw pub.error;if(windows.error)throw windows.error;
   if(!pub.data?.content){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
   const d=pub.data.content;
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
   if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Eventsdaten.');d.excursions=d.excursions||[];
   data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
-  if(section('excursions')){
-    const res=await cloud.rpc('fantastix_excursion_votes_read_v2');
-    if(res.error){excursionVoteError='Eventszusagen derzeit nicht verfügbar. SQL-Update 09 prüfen.';excursionVotes=[];console.warn(res.error);}
-    else{excursionVotes=res.data||[];excursionVoteError='';}
-  }else{excursionVotes=[];excursionVoteError='';}
-
-  try{const notes=await cloud.from('fantastix_meeting_notes').select('meeting_id,member_id,note');if(notes.error)throw notes.error;meetingNotes=notes.data||[];}catch(e){meetingNotes=[];console.warn('Mitgliedernotizen nicht verfügbar; SQL 19 installieren:',e.message);}
-  try{await loadBirthdays();}catch(e){console.warn('Geburtstage nicht verfügbar:',e);birthdays=[];}
-  try{await loadAvatars();}catch(e){console.warn('Profilfotos nicht verfügbar:',e);}
-  try{const res=await cloud.rpc('fantastix_notice_list');if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}
-  await refreshReaderExtras();renderApp();detectPushSubscription();
- }catch(e){data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');}
+  renderRefreshedReader(background);
+  // Independent optional reads run together; the menu is already usable.
+  await Promise.all([
+   (async()=>{
+    if(!section('excursions')){excursionVotes=[];excursionVoteError='';return;}
+    try{const res=await cloud.rpc('fantastix_excursion_votes_read_v2');if(!readerRefreshCurrent(run))return;if(res.error)throw res.error;excursionVotes=res.data||[];excursionVoteError='';}
+    catch(e){if(readerRefreshCurrent(run)){excursionVoteError='Eventszusagen derzeit nicht verfügbar.';excursionVotes=[];console.warn(e);}}
+   })(),
+   (async()=>{try{const notes=await cloud.from('fantastix_meeting_notes').select('meeting_id,member_id,note');if(!readerRefreshCurrent(run))return;if(notes.error)throw notes.error;meetingNotes=notes.data||[];}catch(e){if(readerRefreshCurrent(run)){meetingNotes=[];console.warn('Mitgliedernotizen nicht verfügbar:',e.message);}}})(),
+   loadBirthdays().catch(e=>{if(readerRefreshCurrent(run)){birthdays=[];console.warn('Geburtstage nicht verfügbar:',e);}}),
+   loadAvatars().catch(e=>console.warn('Profilfotos nicht verfügbar:',e)),
+   (async()=>{try{const res=await cloud.rpc('fantastix_notice_list');if(!readerRefreshCurrent(run))return;if(res.error)throw res.error;notices=res.data||[];queueNewNotices();}catch(e){if(readerRefreshCurrent(run)){notices=[];console.warn('Nachrichten konnten nicht geladen werden:',e);}}})(),
+   refreshReaderExtras()
+  ]);
+  if(!readerRefreshCurrent(run))return;
+  readerLastSync=Date.now();readerLastSyncUser=run.userId;
+  renderRefreshedReader(true);
+  if(readerPushCheckedUser!==run.userId||Date.now()-readerPushCheckedAt>=5*60*1000){readerPushCheckedUser=run.userId;readerPushCheckedAt=Date.now();detectPushSubscription();}
+ }catch(e){
+  if(!readerRefreshCurrent(run))return;
+  const denied=[401,403].includes(Number(e.status))||['PGRST301','PGRST302','PGRST303','42501'].includes(e.code);
+  if(background&&data&&!denied){console.warn('Hintergrundaktualisierung fehlgeschlagen:',e);$('#updated').textContent='Aktualisierung derzeit nicht möglich · bisheriger Stand bleibt sichtbar.';return;}
+  data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Laden fehlgeschlagen: '+(e.message||String(e))+' · Bitte erneut öffnen.');
+ }
 }
 async function doAuth(form){
  if(busy)return;
@@ -595,7 +634,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;await cloud.auth.signOut();user=null;fxSetIconBadge(false);profile=null;data=null;meetingNotes=[];notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;readerRefreshInFlight=null;readerLastSyncUser=null;readerPushCheckedUser=null;await cloud.auth.signOut();user=null;fxSetIconBadge(false);profile=null;data=null;meetingNotes=[];excursionVotes=[];excursionVoteError='';readerUpdates=[];readerUpdateReads=new Set();readerPresence={};notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
@@ -683,10 +722,8 @@ document.addEventListener('click',e=>{
  const cal=e.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');if(cal){if(cal.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(cal.dataset.calendarMove));calendarSelected=calendarMonth===today().slice(0,7)?today():calendarMonth+'-01';}else if(cal.hasAttribute('data-calendar-today')){calendarSelected=window.FantastiXCalendar.local(new Date());calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=cal.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}renderApp();return;}
  const nav=e.target.closest('[data-tab]');if(nav){
  readerEntry=null;tab=nav.dataset.tab;if(tab==='calendar'){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}scrollTo({top:0,behavior:'instant'});
- if(user&&navigator.onLine&&['dashboard','meetings','calendar'].includes(tab)){
-  $('#content').innerHTML='<section class="card"><p class="muted">Aktuelle Termine werden geladen …</p></section>';
-  refresh();
- } else renderApp();
+ renderApp();
+ if(user&&navigator.onLine)refresh({background:true});
  return;
  }
  const y=e.target.closest('[data-year]');if(y){year=y.dataset.year;renderApp();return;}
@@ -704,10 +741,10 @@ $('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
 document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
-setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh({background:true});});
+setInterval(()=>{if(!document.hidden&&user&&!busy)refresh({background:true});},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
 
-setInterval(()=>{if(user&&!document.hidden&&profile?.member_id)refreshReaderExtras().then(()=>renderApp()).catch(console.warn);},60000);
+// Presence and inbox are refreshed by the same coordinated background read.
 
 setInterval(refreshVoteCountdowns,30000);
