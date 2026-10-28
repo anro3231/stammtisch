@@ -82,3 +82,10 @@ dialog.profile-photo-viewer{background:#111;color:#fff;width:min(92vw,760px);max
 .meeting-note-editor .meeting-note-fields{margin-top:4px;max-width:none}
 .meeting-note-input{min-height:34px;font-size:16px;padding:5px 8px}
 @media(max-width:420px){.member-att>.row{align-items:flex-start;flex-wrap:wrap}.rsvp-preview{gap:7px}.member-open{font-size:13px}.ranking-filter{padding:8px 11px}}
+
+/* Admin: kompakte Datums-/Zeitfelder, auch mit Safaris nativer Mindestbreite. */
+.admin-entry :is(form[data-form="meeting"],form[data-form="excursion"]) .field{min-width:0;max-width:100%}
+.admin-entry :is(form[data-form="meeting"],form[data-form="excursion"]) :is(input[type="date"],input[type="time"]){display:block;box-sizing:border-box;width:100%;min-width:0;max-width:18rem;min-inline-size:0;max-inline-size:min(100%,18rem);height:46px;min-height:44px;padding:10px 12px;font-size:16px;line-height:normal;text-align:left;-webkit-appearance:none;appearance:none}
+.admin-entry :is(form[data-form="meeting"],form[data-form="excursion"]) input[type="time"]{max-width:10rem;max-inline-size:min(100%,10rem)}
+.admin-entry :is(form[data-form="meeting"],form[data-form="excursion"]) :is(input[type="date"],input[type="time"])::-webkit-date-and-time-value{text-align:left;min-width:0;min-height:1.2em}
+.admin-entry :is(form[data-form="meeting"],form[data-form="excursion"]) :is(input[type="date"],input[type="time"])::-webkit-datetime-edit{min-width:0;padding:0}
