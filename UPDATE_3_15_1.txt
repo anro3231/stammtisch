@@ -1,3 +1,0 @@
-Version 3.15.1: Admin-Benachrichtigungen bei Event-Zusagen und Event-Absagen.
-Zuerst SQL 20, danach 21_ADMIN_EVENT_ABSTIMMUNGEN.sql im Supabase SQL Editor ausführen.
-Die Benachrichtigungen entstehen automatisch bei neuen bzw. geänderten Stimmen, nicht rückwirkend.

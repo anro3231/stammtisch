@@ -1,7 +1,0 @@
-FantastiX 3.15.0
-
-1. In Supabase SQL Editor Datei 20_BENACHRICHTIGUNGEN_ONLINE.sql ausführen.
-2. Danach Dateien auf GitHub hochladen und GitHub Pages neu laden.
-3. Admin und Leser mit Testkonten prüfen.
-
-Hinweise: Die neuen Benachrichtigungen sind In-App-Meldungen (keine garantierten Betriebssystem-Push-Nachrichten). Admin-Zusagen aus Stammtischen werden beim Publizieren des aktualisierten Datenstandes erkannt. Event-Abstimmungen, die in separaten Supabase-Tabellen gespeichert werden, benötigen für vollständige Admin-Meldungen zusätzlich einen DB-Trigger auf der konkreten Event-Abstimmungstabelle. SQL 20 wurde nicht gegen deine Live-Datenbank ausgeführt; bitte zuerst Backup und Test machen.

@@ -825,7 +825,7 @@ function markCloudDirty(){cloudDirty=true;localStorage.setItem(CLOUD_DIRTY_KEY,'
 function markCloudClean(revision){cloudDirty=false;cloudRevision=revision;localStorage.setItem(CLOUD_DIRTY_KEY,'0');localStorage.setItem(CLOUD_REV_KEY,String(revision));localStorage.setItem(CLOUD_CONTEXT_KEY,activeCloudContext());}
 function cloudForm(){
  const cfg=getCloudConfig();
- if(!cfg)return modal('Cloud einrichten',`<div class="notice warning">Trage deine Supabase-Projekt-URL und deinen Publishable Key in <strong>cloud-config.js</strong> ein und lade die Datei auf GitHub Pages hoch. Die Schritte stehen in ANLEITUNG.txt.</div><button class="ghost" data-action="close">Schließen</button>`);
+ if(!cfg)return modal('Cloud einrichten',`<div class="notice warning">Trage deine Supabase-Projekt-URL und deinen Publishable Key in <strong>cloud-config.js</strong> ein und lade die Datei auf GitHub Pages hoch. Hinweise zur Einrichtung stehen in README.md.</div><button class="ghost" data-action="close">Schließen</button>`);
  if(!cloudUser)return modal('Administrator-Anmeldung',`<form data-form="cloud-auth"><div class="field"><label>E-Mail</label><input type="email" name="email" autocomplete="username" required></div><div class="field"><label>Passwort</label><input type="password" name="password" autocomplete="current-password" minlength="6" required></div>${footer('Anmelden')}</form>`);
  const opts=publicSettings();
  modal('Cloud & Freigaben',`<div class="notice ${cloudReady?'':'warning'}">${esc(syncMessage)}</div>

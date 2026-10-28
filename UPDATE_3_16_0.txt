@@ -1,1 +1,0 @@
-Version 3.16.0: Glocke rechts oben; Versionsnummer korrigiert; keine Mitglieder-Stimmmeldungen; Fristanzeige; Admin-Korrektur sperrt UI nicht. SQL 22 ausführen. Hinweis: Serverseitige RPC-Abstimmungssperren können eine separate Anpassung der bestehenden Supabase-Funktionen erfordern.
