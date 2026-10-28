@@ -9,17 +9,21 @@ async function copyTransferIBAN(button){
  if(panel.isConnected){if(copied){button.textContent='Kopiert ✓';status.textContent='IBAN wurde kopiert.';}else{const iban=panel.querySelector('.transfer-iban');try{const selection=window.getSelection(),range=document.createRange();range.selectNodeContents(iban);selection.removeAllRanges();selection.addRange(range);}catch{}status.textContent='Bitte die markierte IBAN manuell kopieren.';}}
  button.disabled=false;
 }
-let fineMemberFilter='';
+let fineMemberFilter='',fineListLimit=10;
 function fineMemberFilterHTML(){
  const ids=[...new Set([...data.members.map(m=>m.id),...data.fines.map(f=>f.memberId)])];
- if(fineMemberFilter&&!ids.includes(fineMemberFilter))fineMemberFilter='';
+ if(fineMemberFilter&&!ids.includes(fineMemberFilter)){fineMemberFilter='';fineListLimit=10;}
  const name=id=>data.members.find(m=>m.id===id)?.name||'(gelöschtes Mitglied)';
  return `<div class="field fine-filter"><label for="fine-member-filter">Strafen nach Mitglied filtern</label><select id="fine-member-filter"><option value="">Alle Mitglieder</option>${ids.sort((a,b)=>name(a).localeCompare(name(b),'de')).map(id=>`<option value="${esc(id)}" ${fineMemberFilter===id?'selected':''}>${esc(name(id))}</option>`).join('')}</select></div>`;
 }
-function filteredFineListHTML(items,admin=false){return fineMemberFilterHTML()+compactFineListHTML(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter),admin);}
+function filteredFineListHTML(items,admin=false){
+ const filters=fineMemberFilterHTML(),filtered=orderedFines(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter));
+ return filters+compactFineListHTML(filtered.slice(0,fineListLimit),admin)+(filtered.length?`<div class="fine-pagination"><p class="muted tiny">${Math.min(fineListLimit,filtered.length)} von ${filtered.length} Strafen</p>${filtered.length>fineListLimit?'<button type="button" class="ghost" data-fines-more>Mehr laden</button>':''}</div>`:'');
+}
+function orderedFines(items){return [...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));}
 function fineListDate(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:'–';}
 function compactFineListHTML(items,admin=false){
- const fines=[...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));
+ const fines=orderedFines(items);
  if(!fines.length)return '<p class="muted">Keine Strafen für diese Auswahl.</p>';
  return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
@@ -107,7 +111,7 @@ function meetingNoteDisplay(m,memberId){const saved=meetingNotes.find(x=>x.meeti
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
- return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${count.unsure||0} unsicher · ${count.open} offen</small></div>
+ return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${(count.unsure||0)+count.open} Unsicher/noch offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id),note=['present','unsure'].includes(a?.status)?meetingNoteDisplay(m,p.id):'';
  return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
@@ -120,8 +124,8 @@ function tripDateLabel(x){return !x.date?'Termin offen':x.endDate&&x.endDate!==x
 function tripLastDate(x){return x.endDate||x.date||'';}
 function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
-function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,unsure:votes.filter(v=>v.status==='unsure').length,no:votes.filter(v=>v.status==='no').length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} Dabei · ${excursionCount(x.id).no} Nicht dabei · ${excursionCount(x.id).unsure} unsicher</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
+function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,unsure:votes.filter(v=>v.status==='unsure').length,no:votes.filter(v=>v.status==='no').length,open:data.members.filter(m=>m.active!==false&&!votes.some(v=>v.member_id===m.id)).length};}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} Dabei · ${excursionCount(x.id).no} Nicht dabei · ${excursionCount(x.id).unsure+excursionCount(x.id).open} Unsicher/noch offen</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -170,7 +174,7 @@ function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data
 function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
 function dashboardAttendanceHTML(m){
  const yes=memberOrder().filter(p=>p.active!==false&&effective(m,p.id)?.status==='present'),c=rsvpCounts(m);
- return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>avatarFor(p.id)).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${c.yes} Zusagen · ${c.no} Absagen · ${c.unsure} unsicher · ${c.open} offen</span></div>`;
+ return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>avatarFor(p.id)).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${c.yes} Zusagen · ${c.no} Absagen · ${c.unsure+c.open} Unsicher/noch offen</span></div>`;
 }
 function dashboard(){
  const completed=data.meetings.filter(m=>m.date<today()).sort((a,b)=>b.date.localeCompare(a.date));
@@ -205,7 +209,7 @@ function votePanel(m,compact=false){
 }
 function coalesceSource(a){return a.source||'admin';}
 function readerEntryBack(label){return `<button type="button" class="smallbtn reader-entry-back" data-reader-back>← ${readerEntry?.from==='dashboard'?'Zum Dashboard':'Zurück zu '+label}</button>`;}
-function readerCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${count.unsure||0} unsicher</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
+function readerCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${(count.open||0)+(count.unsure||0)} Unsicher/noch offen</span></span>`;}
 function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  if(readerEntry?.kind==='meeting'&&data.meetings.some(m=>m.id===readerEntry.id))return meetingDetails(readerEntry.id);
@@ -699,6 +703,7 @@ document.addEventListener('submit',e=>{
  }
 });
 document.addEventListener('click',e=>{
+ if(e.target.closest('[data-fines-more]')){fineListLimit+=10;renderApp();return;}
  const memberEntry=e.target.closest('[data-reader-member]');
  if(memberEntry){openReaderEntry('member',memberEntry.dataset.readerMember);return;}
  const entry=e.target.closest('[data-reader-meeting],[data-reader-excursion]');
@@ -739,7 +744,7 @@ $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
 $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
-document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
+document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;fineListLimit=10;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh({background:true});});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh({background:true});},60000);

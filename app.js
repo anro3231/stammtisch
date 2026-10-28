@@ -9,17 +9,21 @@ async function copyTransferIBAN(button){
  if(panel.isConnected){if(copied){button.textContent='Kopiert ✓';status.textContent='IBAN wurde kopiert.';}else{const iban=panel.querySelector('.transfer-iban');try{const selection=window.getSelection(),range=document.createRange();range.selectNodeContents(iban);selection.removeAllRanges();selection.addRange(range);}catch{}status.textContent='Bitte die markierte IBAN manuell kopieren.';}}
  button.disabled=false;
 }
-let fineMemberFilter='';
+let fineMemberFilter='',fineListLimit=10;
 function fineMemberFilterHTML(){
  const ids=[...new Set([...data.members.map(m=>m.id),...data.fines.map(f=>f.memberId)])];
- if(fineMemberFilter&&!ids.includes(fineMemberFilter))fineMemberFilter='';
+ if(fineMemberFilter&&!ids.includes(fineMemberFilter)){fineMemberFilter='';fineListLimit=10;}
  const name=id=>data.members.find(m=>m.id===id)?.name||'(gelöschtes Mitglied)';
  return `<div class="field fine-filter"><label for="fine-member-filter">Strafen nach Mitglied filtern</label><select id="fine-member-filter"><option value="">Alle Mitglieder</option>${ids.sort((a,b)=>name(a).localeCompare(name(b),'de')).map(id=>`<option value="${esc(id)}" ${fineMemberFilter===id?'selected':''}>${esc(name(id))}</option>`).join('')}</select></div>`;
 }
-function filteredFineListHTML(items,admin=false){return fineMemberFilterHTML()+compactFineListHTML(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter),admin);}
+function filteredFineListHTML(items,admin=false){
+ const filters=fineMemberFilterHTML(),filtered=orderedFines(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter));
+ return filters+compactFineListHTML(filtered.slice(0,fineListLimit),admin)+(filtered.length?`<div class="fine-pagination"><p class="muted tiny">${Math.min(fineListLimit,filtered.length)} von ${filtered.length} Strafen</p>${filtered.length>fineListLimit?'<button type="button" class="ghost" data-fines-more>Mehr laden</button>':''}</div>`:'');
+}
+function orderedFines(items){return [...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));}
 function fineListDate(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:'–';}
 function compactFineListHTML(items,admin=false){
- const fines=[...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));
+ const fines=orderedFines(items);
  if(!fines.length)return '<p class="muted">Keine Strafen für diese Auswahl.</p>';
  return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
@@ -40,7 +44,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.23.2";
+const APP_VERSION = window.FX_VERSION || "3.23.3";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -119,7 +123,7 @@ function excursionPeriod(x){return !x.date?'Termin offen':x.endDate&&x.endDate!=
 function excursionLastDate(x){return x.endDate||x.date||'';}
 function nextExcursion(){const pending=(data.excursions||[]).filter(x=>!x.completed&&(!x.date||excursionLastDate(x)>=today()));return [...pending].sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 let excursionVotes=[],excursionVoteWarning='';
-function excursionVoteCounts(id){const selected=excursionVotes.filter(v=>v.excursion_id===id);return {yes:selected.filter(v=>v.status==='yes').length,unsure:selected.filter(v=>v.status==='unsure').length,no:selected.filter(v=>v.status==='no').length};}
+function excursionVoteCounts(id){const selected=excursionVotes.filter(v=>v.excursion_id===id);return {yes:selected.filter(v=>v.status==='yes').length,unsure:selected.filter(v=>v.status==='unsure').length,no:selected.filter(v=>v.status==='no').length,open:data.members.filter(m=>m.active!==false&&!selected.some(v=>v.member_id===m.id)).length};}
 async function reloadExcursionVotes(){if(!cloudReady||!cloudClient||!cloudUser)return;const {data:rows,error}=await cloudClient.rpc('fantastix_excursion_votes_admin_v2');if(error)throw error;excursionVotes=rows||[];const notes=await cloudClient.rpc('fantastix_excursion_vote_notes_read');if(notes.error)throw notes.error;const map=new Map((notes.data||[]).map(x=>[x.excursion_id+'|'+x.member_id,x.note]));excursionVotes.forEach(v=>v.note=map.get(v.excursion_id+'|'+v.member_id)||'');excursionVoteWarning='';if(page==='excursions')render();}
 
 /* Kassa: Zahlungen vor dem Upgrade sind über die Kontostand-Anfangsbuchung abgedeckt.
@@ -280,7 +284,7 @@ function meetingVoteDeadline(m){
 }
 function dashboardAttendanceHTML(m){
  const people=data.members.filter(p=>p.active!==false),yes=people.filter(p=>effectiveAttendance(m,p.id)?.status==='present');
- return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>memberAvatar(p.id,initials(p.name))).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${yes.length} Zusagen · ${people.filter(p=>effectiveAttendance(m,p.id)?.status==='absent').length} Absagen · ${people.filter(p=>effectiveAttendance(m,p.id)?.status==='unsure').length} unsicher · ${people.filter(p=>!effectiveAttendance(m,p.id)).length} offen</span></div>`;
+ return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>memberAvatar(p.id,initials(p.name))).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${yes.length} Zusagen · ${people.filter(p=>effectiveAttendance(m,p.id)?.status==='absent').length} Absagen · ${people.filter(p=>!['present','absent'].includes(effectiveAttendance(m,p.id)?.status)).length} Unsicher/noch offen</span></div>`;
 }
 function homeHTML(){
  const completed=data.meetings.filter(m=>m.date<today()).sort((a,b)=>b.date.localeCompare(a.date));
@@ -333,7 +337,7 @@ function loadMoreMemberHistory(id){
  const activity=$('#member-activity');if(activity)activity.innerHTML=memberActivityHTML(id);
 }
 function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card reader-entry-list">${members.length?members.map(m=>`<div class="reader-entry member-list-row">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<button type="button" class="member-open" data-action="member-edit" data-id="${esc(m.id)}"><span class="reader-entry-info member-entry-info"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small class="member-last-online">${esc(memberLastOnline(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button></div>`).join(''):empty('👥','Noch keine Mitglieder')}</div>`;}
-function adminCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${count.unsure||0} unsicher</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
+function adminCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${(count.open||0)+(count.unsure||0)} Unsicher/noch offen</span></span>`;}
 function meetingsHTML(){
  const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date));
  return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
@@ -349,11 +353,12 @@ function excursionsHTML(){
  <section class="card reader-entry-list">${list.map(x=>`<button type="button" class="reader-entry" data-action="excursion-edit" data-id="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(excursionOrganizers(x))}</small>${adminCountSummary(excursionVoteCounts(x.id))}</span><span class="reader-entry-end">${termStatusHTML(eventStatus(x))}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>
  <p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
 }
+function eventVoteSummary(id){const c=excursionVoteCounts(id);return `${c.yes} dabei / ${c.no} nicht dabei / ${c.open+c.unsure} Unsicher/noch offen`;}
 function excursionForm(id){
  const x=(data.excursions||[]).find(v=>v.id===id)||{id:'',title:'',date:'',endDate:'',location:'',notes:'',organizerIds:[],organizerOther:'',completed:false};
  const already=excursionVotes.filter(v=>v.excursion_id===x.id);
  const ownMemberId=readerProfiles.find(p=>p.user_id===cloudUser?.id)?.member_id;
- const countLabel=()=>`${already.filter(v=>v.status==='yes').length} dabei / ${already.filter(v=>v.status==='no').length} nicht dabei / ${already.filter(v=>v.status==='unsure').length} unsicher`;
+ const countLabel=()=>eventVoteSummary(x.id);
  const voteHTML=id?`<div class="separator"></div><h3>Zusagen · <span id="excursion-vote-count">${countLabel()}</span></h3>
  <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Event. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
  ${!ownMemberId?'<p class="hint">Tipp: Dein eigenes Admin-Konto kannst du unter Mehr → Benutzer verwalten einem Mitglied zuordnen.</p>':''}
@@ -384,7 +389,7 @@ function updateExcursionVoteControls(id){
  const dialog=adminEditorRoot();if(!dialog)return;
  const form=dialog.querySelector('form[data-form="excursion"]');if(!form||form.elements.id.value!==id)return;
  const selected=excursionVotes.filter(v=>v.excursion_id===id);
- const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=`${selected.filter(v=>v.status==='yes').length} dabei / ${selected.filter(v=>v.status==='no').length} nicht dabei / ${selected.filter(v=>v.status==='unsure').length} unsicher`;
+ const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=eventVoteSummary(id);
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
   if(label){label.textContent=(v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
@@ -1084,7 +1089,8 @@ async function sendAdminPushTest(){
 }
 
 /* Interaktionen */
-document.addEventListener('click',async ev=>{const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
+document.addEventListener('click',async ev=>{
+ if(ev.target.closest('[data-fines-more]')){fineListLimit+=10;render();return;}const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
  const action=el.dataset.action,id=el.dataset.id;if(action==='fx-new-read'){fxReadNew(Number(id));return;}if(action==='fx-new-read-all'){fxReadNew();return;}if(el.dataset.page){if(!leaveAdminEntry())return;page=el.dataset.page;render();if(page==='members')loadOnlinePresenceAdmin().catch(console.warn);window.scrollTo({top:0,behavior:'instant'});return;}
@@ -1118,7 +1124,7 @@ document.addEventListener('submit',async ev=>{const form=ev.target;if(!form.matc
 $('#dialog').addEventListener('close',()=>{if(!$('#dialog').open)stopPushAdmin();});
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type!=='fantastix-admin-push-open'||($('#dialog').open&&!$('#push-admin-panel'))||!leaveAdminEntry())return;page='settings';render();if(cloudReady&&cloudUser)openPushAdmin();});
 document.addEventListener('input',e=>{if(adminEntry&&e.target.closest('#admin-entry form'))adminEntry.dirty=true;});
-document.addEventListener('change',async e=>{const t=e.target;if(t.id==='fine-member-filter'){fineMemberFilter=t.value;render();return;}if(adminEntry&&t.closest('#admin-entry form'))adminEntry.dirty=true;if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
+document.addEventListener('change',async e=>{const t=e.target;if(t.id==='fine-member-filter'){fineMemberFilter=t.value;fineListLimit=10;render();return;}if(adminEntry&&t.closest('#admin-entry form'))adminEntry.dirty=true;if(t?.name==='organizerId'&&t.matches('[data-organizer-auto]')){t.dataset.organizerAuto='off';return;}if(t?.name==='date'&&t.closest('form[data-form="meeting"]')){const form=t.closest('form');const chooser=form.querySelector('[name="organizerId"]');if(chooser?.dataset.organizerAuto==='on'){const meetingId=form.querySelector('[name="id"]')?.value||'';chooser.value=suggestedOrganizer(t.value,meetingId)?.id||'';}return;}if(t?.id!=='backupFile')return;
  const file=e.target.files?.[0];if(!file)return;
  try{
   if(file.size>10*1024*1024)throw Error('Die Sicherung ist größer als 10 MB.');

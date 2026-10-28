@@ -36,6 +36,10 @@ Prüfung mit simulierten langsamen Antworten: `node test-reader-speed.cjs` (ben�
 
 Bei 👍 Dabei und ❓ Unsicher ist das optionale Notizfeld dauerhaft sichtbar (maximal 160 Zeichen, innerhalb der Abstimmungsfrist). Gespeicherte Notizen erscheinen auch beim Admin und im Abstimmungsstand. Die Supabase-Migration `fantastix_unsure_meeting_notes` ergänzt die Veröffentlichung von Unsicher-Notizen und bindet die Schreibrechte der Notizentabelle ausdrücklich an das eigene Mitglied.
 
+## Abstimmungsübersichten ab Version 3.23.3
+
+Die Summen für Stammtische und Events fassen „Unsicher“ und unbeantwortete Stimmen unter „Unsicher/noch offen“ zusammen. Einzelne Rückmeldungen und die Auswahl ❓ Unsicher bleiben unverändert. Die Einzelliste der Strafen zeigt zunächst 10 Einträge; „Mehr laden“ ergänzt jeweils 10 weitere. Ein Wechsel des Mitgliederfilters beginnt wieder mit 10 Einträgen.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.

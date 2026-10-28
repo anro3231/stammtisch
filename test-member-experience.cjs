@@ -19,7 +19,11 @@ function environment(file){
  for(const file of ['app.js','lesen.js']){
   const env=environment(file),{w,doc,run}=env,admin=file==='app.js';
   run(admin?'render()':'renderApp()');
-  const preview=doc.querySelector('.rsvp-preview');assert.match(preview.textContent,/1 Zusagen.*1 Absagen.*1 unsicher.*1 offen/);assert.equal(preview.querySelectorAll('[data-profile-photo]').length,1);
+  run("excursionVotes=[{excursion_id:'e',member_id:'a',status:'yes'},{excursion_id:'e',member_id:'b',status:'unsure'},{excursion_id:'e',member_id:'c',status:'no'}]");
+  const summary=run(admin?'adminCountSummary(excursionVoteCounts("e"))':'readerCountSummary(excursionCount("e"))');assert.match(summary,/2 Unsicher\/noch offen/);assert.ok(!summary.includes('unsicher'));
+  if(admin)assert.match(run('eventVoteSummary("e")'),/1 dabei \/ 1 nicht dabei \/ 2 Unsicher\/noch offen/);
+  else{const roster=doc.createElement('div');roster.innerHTML=run('excursionRoster(data.excursions[0])');assert.match(roster.querySelector('.roster-header').textContent,/2 Unsicher\/noch offen/);assert.match(roster.textContent,/❓ Unsicher/,'Individual unsure votes remain visible');}
+  const preview=doc.querySelector('.rsvp-preview');assert.match(preview.textContent,/1 Zusagen.*1 Absagen.*2 Unsicher\/noch offen/);assert.equal(preview.querySelectorAll('[data-profile-photo]').length,1);
   preview.querySelector('img').click();assert.ok(doc.querySelector('#profile-photo-viewer').open);assert.equal(doc.querySelector('.profile-photo-large').src,'https://example.test/photo.jpg');doc.querySelector('.photo-viewer-close').click();assert.equal(doc.querySelector('.profile-photo-large').hasAttribute('src'),false);
   run(admin?"page='members';render()":"tab='members';renderApp()");
   assert.ok(!doc.querySelector('.member-list-row').textContent.includes('Ewig'));assert.equal(doc.querySelectorAll('.member-list-row [data-profile-photo]').length,1);assert.equal(doc.querySelector('button [data-profile-photo]'),null,'No nested interactive photo control');
@@ -33,6 +37,13 @@ function environment(file){
   assert.equal(doc.querySelectorAll('[data-fine-row]').length,2);const select=doc.querySelector('#fine-member-filter');select.value='a';select.dispatchEvent(new w.Event('change',{bubbles:true}));
   if(!doc.querySelector('#fine-member-filter'))doc.querySelector('#content').innerHTML=run('cash()');
   assert.equal(doc.querySelectorAll('[data-fine-row]').length,1);assert.ok(doc.querySelector('[data-fine-row="f1"]'));assert.equal(run('data.fines.length'),2);
+  run("data.fines=Array.from({length:27},(_,i)=>({id:'page'+i,memberId:i<23?'a':'b',date:'2026-10-'+String(i+1).padStart(2,'0'),reason:'Strafe '+i,amountCents:100}));fineMemberFilter='';fineListLimit=10;");
+  run(admin?"page='fines';render()":"tab='cash';renderApp()");
+  for(const expected of [10,20,27]){
+   assert.equal(doc.querySelectorAll('[data-fine-row]').length,expected);const more=doc.querySelector('[data-fines-more]');if(expected<27){assert.ok(more);more.click();}else assert.equal(more,null);
+  }
+  const memberFilter=doc.querySelector('#fine-member-filter');memberFilter.value='a';memberFilter.dispatchEvent(new w.Event('change',{bubbles:true}));assert.equal(doc.querySelectorAll('[data-fine-row]').length,10,'Changing member resets pagination');
+  assert.equal(doc.querySelector('[data-fine-row]').dataset.fineRow,'page22','Newest matching fine first');doc.querySelector('[data-fines-more]').click();assert.equal(doc.querySelectorAll('[data-fine-row]').length,20);doc.querySelector('[data-fines-more]').click();assert.equal(doc.querySelectorAll('[data-fine-row]').length,23);assert.equal(doc.querySelector('[data-fines-more]'),null);assert.equal(run('data.fines.length'),27,'Loading more never changes fine data');
   run(admin?"page='ranking';render()":"tab='ranking';renderApp()");
   assert.equal(doc.querySelector('.ranking-filters select'),null);const all=doc.querySelector(admin?'[data-action="rank-year"][data-year="all"]':'[data-year="all"]');assert.ok(all);all.click();assert.equal(doc.querySelector('[data-year="all"]').getAttribute('aria-pressed'),'true');
   if(admin){
