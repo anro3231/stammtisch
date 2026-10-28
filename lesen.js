@@ -9,10 +9,18 @@ async function copyTransferIBAN(button){
  if(panel.isConnected){if(copied){button.textContent='Kopiert ✓';status.textContent='IBAN wurde kopiert.';}else{const iban=panel.querySelector('.transfer-iban');try{const selection=window.getSelection(),range=document.createRange();range.selectNodeContents(iban);selection.removeAllRanges();selection.addRange(range);}catch{}status.textContent='Bitte die markierte IBAN manuell kopieren.';}}
  button.disabled=false;
 }
+let fineMemberFilter='';
+function fineMemberFilterHTML(){
+ const ids=[...new Set([...data.members.map(m=>m.id),...data.fines.map(f=>f.memberId)])];
+ if(fineMemberFilter&&!ids.includes(fineMemberFilter))fineMemberFilter='';
+ const name=id=>data.members.find(m=>m.id===id)?.name||'(gelöschtes Mitglied)';
+ return `<div class="field fine-filter"><label for="fine-member-filter">Strafen nach Mitglied filtern</label><select id="fine-member-filter"><option value="">Alle Mitglieder</option>${ids.sort((a,b)=>name(a).localeCompare(name(b),'de')).map(id=>`<option value="${esc(id)}" ${fineMemberFilter===id?'selected':''}>${esc(name(id))}</option>`).join('')}</select></div>`;
+}
+function filteredFineListHTML(items,admin=false){return fineMemberFilterHTML()+compactFineListHTML(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter),admin);}
 function fineListDate(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:'–';}
 function compactFineListHTML(items,admin=false){
  const fines=[...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));
- if(!fines.length)return '<p class="muted">Noch keine Strafen.</p>';
+ if(!fines.length)return '<p class="muted">Keine Strafen für diese Auswahl.</p>';
  return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 function uiSymbol(name,fallback){return `<span class="ui-symbol" aria-hidden="true">${window.FantastixUI?.icon(name)||esc(fallback)}</span>`;}
@@ -55,14 +63,14 @@ const member=id=>data?.members?.find(m=>m.id===id);
 const memberName=id=>member(id)?.name||'Mitglied';
 function effective(m,id){
  const v=m.attendance?.[id];
- return v&&['present','absent'].includes(v.status)?v:null;
+ return v&&['present','absent','unsure'].includes(v.status)?v:null;
 }
 function memberOrder(){return [...(data?.members||[])].sort((a,b)=>(Number(a.memberNumber)||99999)-(Number(b.memberNumber)||99999)||a.name.localeCompare(b.name,'de'));}
 function rsvpCounts(m){
  const values=memberOrder().filter(p=>p.active!==false).map(p=>effective(m,p.id));
- return {yes:values.filter(v=>v?.status==='present').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length};
+ return {yes:values.filter(v=>v?.status==='present').length,unsure:values.filter(v=>v?.status==='unsure').length,no:values.filter(v=>v?.status==='absent').length,open:values.filter(v=>!v).length};
 }
-function avatarFor(id){const url=avatarUrls[id];return url?`<img class="member-photo" src="${esc(url)}" alt="" loading="lazy">`:`<span class="member-photo member-photo-placeholder">${esc((memberName(id)||'?').trim().slice(0,1).toUpperCase())}</span>`;}
+function avatarFor(id){const url=avatarUrls[id];return url?`<img class="member-photo" data-profile-photo tabindex="0" role="button" aria-label="Profilbild von ${esc(memberName(id))} vergrößern" src="${esc(url)}" alt="${esc(memberName(id))}" loading="lazy">`:`<span class="member-photo member-photo-placeholder">${esc((memberName(id)||'?').trim().slice(0,1).toUpperCase())}</span>`;}
 async function loadAvatars(force=false){
  if(!cloud||!user||!profile?.member_id||(!force&&Date.now()-avatarLoadedAt<5*60*1000))return;
  const {data:rows,error}=await cloud.rpc('fantastix_avatar_directory');if(error)throw error;
@@ -98,11 +106,11 @@ function meetingNoteDisplay(m,memberId){return meetingNote(m.id,memberId)||(effe
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
- return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${count.open} offen</small></div>
+ return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${count.unsure||0} unsicher · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id),note=a?.status==='present'?meetingNoteDisplay(m,p.id):'';
  return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
- <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':'no-chip'}">${!a?'Noch offen':a.status==='present'?'✓ Dabei':'× Nicht dabei'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
+ <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':a.status==='unsure'?'gray':'no-chip'}">${!a?'Noch offen':a.status==='present'?'👍 Dabei':a.status==='unsure'?'❓ Unsicher':'👎 Nicht dabei'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
 }
 
@@ -111,8 +119,8 @@ function tripDateLabel(x){return !x.date?'Termin offen':x.endDate&&x.endDate!==x
 function tripLastDate(x){return x.endDate||x.date||'';}
 function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
-function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,no:votes.filter(v=>v.status==='no').length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} Dabei · ${excursionCount(x.id).no} Nicht dabei</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'× Nicht dabei':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
+function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,unsure:votes.filter(v=>v.status==='unsure').length,no:votes.filter(v=>v.status==='no').length};}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${excursionCount(x.id).yes} Dabei · ${excursionCount(x.id).no} Nicht dabei · ${excursionCount(x.id).unsure} unsicher</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':'gray'}">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen'}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -159,6 +167,10 @@ function voteTimeRemaining(deadline,now=Date.now()){
 }
 function voteCountdownHTML(deadline){return `<p class="hint vote-countdown" data-vote-deadline="${deadline??''}">${voteTimeRemaining(deadline)}</p>`;}
 function refreshVoteCountdowns(){for(const el of document.querySelectorAll('[data-vote-deadline]'))el.textContent=voteTimeRemaining(el.dataset.voteDeadline);}
+function dashboardAttendanceHTML(m){
+ const yes=memberOrder().filter(p=>p.active!==false&&effective(m,p.id)?.status==='present'),c=rsvpCounts(m);
+ return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>avatarFor(p.id)).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${c.yes} Zusagen · ${c.no} Absagen · ${c.unsure} unsicher · ${c.open} offen</span></div>`;
+}
 function dashboard(){
  const completed=data.meetings.filter(m=>m.date<today()).sort((a,b)=>b.date.localeCompare(a.date));
  const next=[...data.meetings].filter(m=>m.date>=today()).sort((a,b)=>a.date.localeCompare(b.date))[0];
@@ -173,7 +185,7 @@ function dashboard(){
   <div class="metric"><small>Jahresführung ${currentYear()}</small>${leaderHTML(yr)}</div>
  </div>
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2>${next?termStatusHTML(days===0?'Heute':'Geplant'):'<span class="chip gray">Nicht geplant</span>'}</div>
- ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p>${voteCountdownHTML(deadlines.has(next.id)?new Date(deadlines.get(next.id)).getTime():null)}<p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`<div class="rsvp-short">${(()=>{const c=rsvpCounts(next);return `${c.yes} Zusagen · ${c.no} Absagen · ${c.open} offen`;})()} </div>`:``}<button type="button" class="button dashboard-open" data-reader-meeting="${esc(next.id)}">Stammtisch öffnen →</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
+ ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p>${voteCountdownHTML(deadlines.has(next.id)?new Date(deadlines.get(next.id)).getTime():null)}<p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`${dashboardAttendanceHTML(next)}`:``}<button type="button" class="button dashboard-open" data-reader-meeting="${esc(next.id)}">Stammtisch öffnen →</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 3 Stammtische</h2>${completed.slice(0,3).length?completed.slice(0,3).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2>${nextTrip()?termStatusHTML(eventStatus(nextTrip())):'<span class="chip gray">Nicht geplant</span>'}</div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="event-date">${tripDateLabel(nextTrip())}</p><p class="event-organizer">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-reader-excursion="${esc(nextTrip().id)}" type="button">Öffnen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  ${strongestStreakHTML()}${pushPromptHTML()}`;
@@ -186,14 +198,13 @@ function votePanel(m,compact=false){
  const status=own?.status||'';
  const summary=closed?'Abstimmung geschlossen':`Frist: ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${status==='present'?'selected yes':''}" data-vote="present" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>✓ Dabei</button>
- <button type="button" class="vote-btn ${status==='absent'?'selected no':''}" data-vote="absent" data-meeting-id="${esc(m.id)}" ${locked||closed||busy?'disabled':''}>× Nicht dabei</button></div>
- ${status==='present'&&!locked&&!closed?`<details class="meeting-note-editor"><summary>${meetingNoteDisplay(m,profile.member_id)?'Notiz bearbeiten':'Notiz hinzufügen (optional)'}</summary><div class="meeting-note-fields"><label class="note-input-label" for="meeting-note-${esc(m.id)}">Notiz für alle, maximal 160 Zeichen</label><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme 15 Minuten später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Speichern</button></div></details>`:''}
- ${status?`<small class="muted">${status==='present'?'Zusage':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
+ <div class="vote-actions">${[['present','👍','Dabei','yes'],['unsure','❓','Unsicher','unsure'],['absent','👎','Nicht dabei','no']].map(([value,emoji,label,tone])=>`<button type="button" class="vote-btn ${status===value?'selected '+tone:''}" data-vote="${value}" data-meeting-id="${esc(m.id)}" aria-label="${label}" title="${label}" aria-pressed="${status===value}" ${locked||closed||busy?'disabled':''}>${emoji}</button>`).join('')}</div>
+ ${status==='present'&&!locked&&!closed?`<div class="meeting-note-editor"><label class="note-input-label" for="meeting-note-${esc(m.id)}">Notiz hinzufügen (optional)</label><div class="meeting-note-fields"><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme etwas später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Speichern</button></div></div>`:''}
+ ${status?`<small class="muted">${status==='present'?'Zusage':status==='unsure'?'Unsicher':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
 function readerEntryBack(label){return `<button type="button" class="smallbtn reader-entry-back" data-reader-back>← ${readerEntry?.from==='dashboard'?'Zum Dashboard':'Zurück zu '+label}</button>`;}
-function readerCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
+function readerCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${count.unsure||0} unsicher</span>${count.open===undefined?'':`<span>${count.open} offen</span>`}</span>`;}
 function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  if(readerEntry?.kind==='meeting'&&data.meetings.some(m=>m.id===readerEntry.id))return meetingDetails(readerEntry.id);
@@ -239,14 +250,14 @@ function excursionDetails(id){
  return `${readerEntryBack('Events')}${heading('Event')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2>${termStatusHTML(eventStatus(x))}</div>
  <p class="muted">${tripDateLabel(x)}</p>${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
- <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Dabei':own?.status==='no'?'Nicht dabei':'Noch offen'}</span></div>
- <div class="vote-actions"><button type="button" class="vote-btn ${own?.status==='yes'?'selected yes':''}" data-excursion-vote="yes" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>✓ Dabei</button><button type="button" class="vote-btn ${own?.status==='no'?'selected no':''}" data-excursion-vote="no" data-excursion-id="${esc(x.id)}" ${completed||busy||!!excursionVoteError?'disabled':''}>× Nicht dabei</button></div>
+ <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':'gray'}">${own?.status==='yes'?'Dabei':own?.status==='no'?'Nicht dabei':own?.status==='unsure'?'Unsicher':'Noch offen'}</span></div>
+ <div class="vote-actions">${[['yes','👍','Dabei','yes'],['unsure','❓','Unsicher','unsure'],['no','👎','Nicht dabei','no']].map(([value,emoji,label,tone])=>`<button type="button" class="vote-btn ${own?.status===value?'selected '+tone:''}" data-excursion-vote="${value}" data-excursion-id="${esc(x.id)}" aria-label="${label}" title="${label}" aria-pressed="${own?.status===value}" ${completed||busy||!!excursionVoteError?'disabled':''}>${emoji}</button>`).join('')}</div>
  <small class="muted">${'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
  const nowYear=Number(currentYear());const years=[...new Set([...Array.from({length:Math.max(1,nowYear-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>m.date.slice(0,4))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();
- return `${heading('Ranglisten')}<div class="card"><div class="field"><label for="reader-ranking-year">Rangliste auswählen</label><select id="reader-ranking-year" aria-label="Rangliste nach Jahr filtern"><option value="all" ${year==='all'?'selected':''}>Ewig · Alle Jahre</option>${years.map(y=>`<option value="${y}" ${year===y?'selected':''}>${y}</option>`).join('')}</select></div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td>${esc(m.name)}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
+ return `${heading('Ranglisten')}<div class="card"><div class="ranking-filters" role="group" aria-label="Rangliste auswählen">${[['all','Ewige Rangliste'],...years.map(y=>[y,y])].map(([value,label])=>`<button type="button" class="ranking-filter ${year===value?'is-active':''}" data-year="${value}" aria-pressed="${year===value}">${label}</button>`).join('')}</div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td>${esc(m.name)}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function myBirthday(){return birthdays.find(b=>b.member_id===profile?.member_id);}
@@ -257,21 +268,6 @@ async function loadBirthdays(){
  if(error)throw error;
  birthdays=rows||[];
 }
-async function saveMyBirthday(form){
- if(!cloud||!profile?.member_id)return;
- const fd=new FormData(form),day=Number(fd.get('day')),month=Number(fd.get('month'));
- if(!Number.isInteger(day)||!Number.isInteger(month)||day<1||day>31||month<1||month>12)return alert('Bitte einen gültigen Tag und Monat wählen.');
- try{
-  const {error}=await cloud.rpc('fantastix_set_my_birthday',{p_month:month,p_day:day});if(error)throw error;
-  await loadBirthdays();renderApp();alert('Geburtstag gespeichert – jährlich im Kalender sichtbar.');
- }catch(e){alert('Geburtstag konnte nicht gespeichert werden: '+e.message);}
-}
-async function deleteMyBirthday(){
- if(!confirm('Geburtstag aus FantastiX entfernen?'))return;
- try{const {error}=await cloud.rpc('fantastix_set_my_birthday',{p_month:null,p_day:null});if(error)throw error;
- await loadBirthdays();renderApp();}catch(e){alert('Entfernen fehlgeschlagen: '+e.message);}
-}
-
 function lastSeenReader(id){const v=readerPresence[id];if(!v)return 'Noch keine Aktivität';const t=new Date(v);if(Date.now()-t.getTime()<180000)return '🟢 Gerade online';return 'Zuletzt online: '+t.toLocaleString('de-AT',{dateStyle:'short',timeStyle:'short'});}
 async function refreshReaderExtras(){
  if(!cloud||!user||!profile?.member_id)return;const badgeUser=user.id;
@@ -334,12 +330,12 @@ function memberDetails(id){
  const m=data.members.find(m=>m.id===id);if(!m)return empty('Mitglied nicht mehr vorhanden.');
  const balance=section('fines')?readerFineBalances().find(m=>m.id===id):null;
  const all=section('meetings')?pastSeriesMeetings():[],recent=all.slice(0,memberHistoryLimits.get(id)||10);
- return `${readerEntryBack('Mitglieder')}${heading(m.name)}<section class="card">${avatarFor(m.id)}<p class="muted tiny">${m.memberNumber?'Nr. '+esc(m.memberNumber)+' · ':''}${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</p><p class="muted tiny">${currentYear()}: ${count(m,currentYear())} Teilnahmen · Ewig: ${count(m,null)} Teilnahmen</p><p class="muted tiny">${esc(lastSeenReader(m.id))}</p><div class="member-summary"><div class="metric"><small>Aktuelle Stammtischserie ${uiSymbol('flame','🔥')}</small><div class="value">${section('meetings')?currentStreak(id):'–'}</div><small>${section('meetings')?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric"><small>Offene Strafen</small><div class="value">${balance?.count??'–'}</div><small>${balance?money(balance.amount)+' offen':'Strafen nicht freigegeben'}</small></div></div></section><section class="card"><h2>Stammtisch-Historie</h2><p class="muted tiny">${recent.length} von ${all.length} Stammtischen</p><div class="list member-history">${recent.map(meeting=>{const status=effective(meeting,id)?.status;return `<div class="item"><div class="details"><strong>${dateLabel(meeting.date)}</strong><small>${esc(meeting.location||'Ohne Gasthaus')}</small></div><span class="chip ${status==='present'?'yes-chip':status==='absent'?'no-chip':'gray'}">${status==='present'?'✓ Dabei':status==='absent'?'× Nicht dabei':'Nicht erfasst'}</span></div>`;}).join('')||`<p class="muted">${section('meetings')?'Noch keine vergangenen Stammtische.':'Stammtische sind nicht freigegeben.'}</p>`}</div>${recent.length<all.length?`<button type="button" class="ghost history-more" data-member-history-more="${esc(id)}">Mehr laden</button>`:''}</section>`;
+ return `${readerEntryBack('Mitglieder')}${heading(m.name)}<section class="card">${avatarFor(m.id)}<p class="muted tiny">${m.memberNumber?'Nr. '+esc(m.memberNumber)+' · ':''}${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</p><p class="muted tiny">${currentYear()}: ${count(m,currentYear())} Teilnahmen · Ewig: ${count(m,null)} Teilnahmen</p><p class="muted tiny">${esc(lastSeenReader(m.id))}</p><div class="member-summary"><div class="metric"><small>Aktuelle Stammtischserie ${uiSymbol('flame','🔥')}</small><div class="value">${section('meetings')?currentStreak(id):'–'}</div><small>${section('meetings')?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric"><small>Offene Strafen</small><div class="value">${balance?.count??'–'}</div><small>${balance?money(balance.amount)+' offen':'Strafen nicht freigegeben'}</small></div></div></section><section class="card"><h2>Stammtisch-Historie</h2><p class="muted tiny">${recent.length} von ${all.length} Stammtischen</p><div class="list member-history">${recent.map(meeting=>{const status=effective(meeting,id)?.status;return `<div class="item"><div class="details"><strong>${dateLabel(meeting.date)}</strong><small>${esc(meeting.location||'Ohne Gasthaus')}</small></div><span class="chip ${status==='present'?'yes-chip':status==='absent'?'no-chip':'gray'}">${status==='present'?'✓ Dabei':status==='absent'?'👎 Nicht dabei':status==='unsure'?'❓ Unsicher':'Nicht erfasst'}</span></div>`;}).join('')||`<p class="muted">${section('meetings')?'Noch keine vergangenen Stammtische.':'Stammtische sind nicht freigegeben.'}</p>`}</div>${recent.length<all.length?`<button type="button" class="ghost history-more" data-member-history-more="${esc(id)}">Mehr laden</button>`:''}</section>`;
 }
 function members(){
  if(!section('members'))return empty('Mitglieder sind nicht freigegeben.');
  if(readerEntry?.kind==='member'&&data.members.some(m=>m.id===readerEntry.id))return memberDetails(readerEntry.id);
- return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><div class="birthday-editor"><strong>Mein Geburtstag</strong><p class="muted tiny">Nur Tag und Monat werden gespeichert. Im Kalender erscheint der Geburtstag jedes Jahr; ein Geburtsjahr wird nicht gespeichert.</p><form id="birthday-form" class="birthday-form"><div class="field"><label>Tag</label><select name="day" required><option value="">Tag</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}" ${myBirthday()?.day===i+1?'selected':''}>${i+1}</option>`).join('')}</select></div><div class="field"><label>Monat</label><select name="month" required><option value="">Monat</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${myBirthday()?.month===i+1?'selected':''}>${new Date(2000,i,1).toLocaleDateString('de-AT',{month:'long'})}</option>`).join('')}</select></div><button type="submit" class="ghost">Geburtstag speichern</button></form>${myBirthday()?`<div class="row"><small>Aktuell: ${birthdayText(myBirthday())}</small><button type="button" class="smallbtn" id="birthday-remove">Entfernen</button></div>`:''}</div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<button type="button" class="reader-entry" data-reader-member="${esc(m.id)}">${avatarFor(m.id)}<span class="reader-entry-info member-entry-info"><strong>${m.memberNumber!=null?'Nr. '+esc(m.memberNumber)+' · ':''}${esc(m.name)}</strong><small>${currentYear()}: ${count(m,currentYear())} · Ewig: ${count(m,null)}</small><small class="fx-last-seen">${esc(lastSeenReader(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button>`).join('')||'<p>Keine Mitglieder</p>'}</div></section><section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section>`;
+ return `${heading('Mitglieder')}<section class="card"><div class="my-photo-card">${avatarFor(profile.member_id)}<div><strong>Mein Profilfoto</strong><label class="photo-upload-btn">Foto wählen<input class="photo-upload-input" type="file" accept="image/*" hidden></label>${avatarUrls[profile.member_id]?'<button type="button" class="smallbtn" id="delete-my-photo">Entfernen</button>':''}</div></div><details class="account-tools"><summary>Mein Konto</summary><form id="reader-password-form" class="stack"><div class="field"><label>Neues Passwort</label><input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div><div class="field"><label>Passwort wiederholen</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></div><button type="submit" class="ghost">Passwort ändern</button></form><button type="button" class="danger-btn" id="reader-logout">Abmelden</button></details></section><section class="card"><div class="list">${[...data.members].sort((a,b)=>(a.memberNumber??99999)-(b.memberNumber??99999)).map(m=>`<div class="reader-entry member-list-row">${avatarFor(m.id)}<button type="button" class="member-open" data-reader-member="${esc(m.id)}"><span class="reader-entry-info member-entry-info"><strong>${m.memberNumber!=null?'Nr. '+esc(m.memberNumber)+' · ':''}${esc(m.name)}</strong><small class="fx-last-seen">${esc(lastSeenReader(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button></div>`).join('')||'<p>Keine Mitglieder</p>'}</div></section><section class="card"><h2>Nachricht an alle</h2><p class="muted tiny">Deine Nachricht erscheint bei allen freigeschalteten Mitgliedern einmal als Pop-up. Dein Name steht als Absender dabei. Maximal 3 Nachrichten innerhalb von 24 Stunden.</p><button class="ghost" id="member-notice-open" type="button">+ Pop-up-Nachricht senden</button></section>`;
 }
 function readerFineBalances(){
  const paid=new Map(),totals=new Map();
@@ -358,7 +354,7 @@ function cash(){
  if(!section('cash')&&!section('fines'))return empty('Kassa ist nicht freigegeben.');
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
  return `${heading('Kassa')}${section('cash')?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>`:''}
- ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div><section class="card"><h2>Einzelne Strafen</h2>${compactFineListHTML(data.fines)}</section>${readerFineBalancesHTML()}`:''}${transferAccountHTML()}`;
+ ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div>${readerFineBalancesHTML()}<section class="card"><h2>Einzelne Strafen</h2>${filteredFineListHTML(data.fines)}</section>`:''}${transferAccountHTML()}`;
 }
 // Nur einmal pro Benutzer: Der Server liefert ausschliesslich noch nicht bestaetigte Nachrichten.
 // Keine Nachrichtenliste und kein Menuepunkt fuer Leser.
@@ -633,7 +629,7 @@ async function saveMeetingNote(id,fromVote=false){
 async function voteExcursion(id,status){
  if(busy||!user||!profile?.member_id||!data||!section('excursions'))return;
  const trip=data.excursions.find(x=>x.id===id);if(!trip||trip.completed||(trip.date&&tripLastDate(trip)<today()))return alert('Dieser Event ist nicht mehr zur Anmeldung offen.');
- if(!['yes','no'].includes(status))return;
+ if(!['yes','no','unsure'].includes(status))return;
  
  busy=true;renderApp();
  try{
@@ -656,7 +652,6 @@ function askAbsenceReason(meetingId){
 document.addEventListener('submit',e=>{
  if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
- if(e.target.id==='birthday-form'){e.preventDefault();saveMyBirthday(e.target);}
  if(e.target.id==='member-notice-form'){e.preventDefault();sendMemberNotice(e.target);}
  if(e.target.id==='absence-reason-form'){
    e.preventDefault();const fd=new FormData(e.target),reason=String(fd.get('reason')||'').trim();
@@ -681,7 +676,6 @@ document.addEventListener('click',e=>{
  if(e.target.closest('#push-enable')){enablePush();return;}
  if(e.target.closest('#push-disable')){disablePush();return;}
  if(e.target.closest('#delete-my-photo')){deleteMyPhoto();return;}
- if(e.target.closest('#birthday-remove')){deleteMyBirthday();return;}
  if(e.target.closest('#notice-ack')){acknowledgeNotice();return;}
  if(e.target.closest('#member-notice-open')){openMemberNotice();return;}
  if(e.target.closest('#member-notice-close')){$('#member-notice-dialog').close();return;}
@@ -701,14 +695,14 @@ document.addEventListener('click',e=>{
  const excursion=e.target.closest('[data-excursion-vote]');if(excursion){voteExcursion(excursion.dataset.excursionId,excursion.dataset.excursionVote);return;}
  const vote=e.target.closest('[data-vote]');if(vote){
    if(vote.dataset.vote==='absent')askAbsenceReason(vote.dataset.meetingId);
-   else castVote(vote.dataset.meetingId,'present');
+   else castVote(vote.dataset.meetingId,vote.dataset.vote);
  }
 });
 $('#notice-dialog').addEventListener('cancel',e=>{e.preventDefault();});
 $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
-document.addEventListener('change',e=>{if(e.target.id==='reader-ranking-year'){year=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
+document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh();});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh();},60000);

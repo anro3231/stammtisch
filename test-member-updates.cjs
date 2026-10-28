@@ -14,12 +14,12 @@ function environment(file){
 }
 const admin=environment('app.js'),reader=environment('lesen.js');
 admin.run("page='members';cloudReady=true;cloudUser={id:'admin'};birthdays=[{member_id:'a',day:29,month:2}];memberForm('a')");
-const main=admin.doc.querySelector('form[data-form="member"]'),birthday=admin.doc.querySelector('form[data-form="member-birthday"]');
-assert.equal(main.querySelector('form'),null,'No nested forms');assert.equal(birthday.querySelector('form'),null);
-assert.equal(admin.doc.querySelector('#birthday-day').form,birthday);
+const main=admin.doc.querySelector('form[data-form="member"]');
+assert.equal(main.querySelector('form'),null,'No nested forms');assert.equal(admin.doc.querySelector('form[data-form="member-birthday"]'),null);
+assert.equal(admin.doc.querySelector('#birthday-day').form,main);
 assert.ok(admin.doc.querySelector('#mnumber').compareDocumentPosition(admin.doc.querySelector('#birthday-day'))&4);
 assert.ok(admin.doc.querySelector('#birthday-month').compareDocumentPosition(main.querySelector('[name="active"]'))&4);
-const fd=new admin.w.FormData(main),bfd=new admin.w.FormData(birthday);assert.equal(fd.get('id'),'a');assert.equal(fd.has('day'),false);assert.equal(bfd.get('day'),'29');assert.equal(bfd.get('month'),'2');assert.equal(bfd.get('id'),'a');
+const fd=new admin.w.FormData(main);assert.equal(fd.get('id'),'a');assert.equal(fd.get('birthdayDay'),'29');assert.equal(fd.get('birthdayMonth'),'2');assert.equal(main.querySelector('[data-action="member-birthday-remove"]'),null);
 admin.doc.querySelector('#mname').value='Unsaved name';admin.run('adminEntry.dirty=true');
 for(const count of [10,20,26]){
  assert.equal(admin.doc.querySelectorAll('.member-history .item').length,count);

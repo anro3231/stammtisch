@@ -13,6 +13,17 @@ Stammtisch-App als statische Website mit Admin- und Lesemodus sowie Supabase fü
 
 Die Dateien werden über GitHub Pages veröffentlicht; ein Build-Schritt ist nicht erforderlich. Die bestehende `cloud-config.js` und `push-config.js` bei Updates beibehalten. `cloud-config.example.js` dient als Konfigurationsvorlage. Private Server-Schlüssel und Service-Role-Schlüssel gehören nicht in diese Dateien.
 
+## Bedienung ab Version 3.23.0
+
+- Profilbilder lassen sich per Klick vergrößern; das Bildfenster lässt sich mit ×, Escape oder einem Klick neben das Bild schließen.
+- Abstimmungen für Stammtische und Events haben drei Antworten: 👍 Dabei, ❓ Unsicher, 👎 Nicht dabei. Unsicher zählt weder als Anwesenheit noch als Absage. Abstimmungsfristen und geschützte Admin-Korrekturen bleiben wirksam.
+- Geburtstage bearbeitet der Admin im Mitgliedsformular und speichert sie mit dem Mitglied. Zum Entfernen Tag und Monat leeren. Im Lesemodus ist die Bearbeitung ausgeblendet.
+- Einzelne Strafen können nach Mitglied gefiltert werden; Summen und die Übersicht pro Mitglied bleiben davon unabhängig.
+- Die Rangliste hat anklickbare Filter für alle Jahre und die einzelnen Jahresranglisten.
+- Das Gasthausfeld schlägt bisherige Gasthäuser vor und erlaubt freie Eingabe. Gespeicherte Vorschläge werden mit den Admin-Daten synchronisiert.
+
+Die Supabase-Migration `fantastix_unsure_votes` wurde für den dritten Abstimmungsstatus eingerichtet. Neue SQL-Dateien werden nicht im Repository abgelegt; die Migration ist in der Supabase-Migrationshistorie dokumentiert.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.
@@ -32,6 +43,7 @@ Beispiel für die Prüfungen der aktuellen Kassa und des Designs bei installiert
 ```sh
 node test-cash-transfer.cjs
 node test-modern-design.cjs
+node test-member-experience.cjs
 ```
 
 Veraltete Versionsanleitungen und die ungenutzte historische Ein-Datei-App wurden entfernt. Frühere Stände bleiben über die Git-Historie verfügbar.

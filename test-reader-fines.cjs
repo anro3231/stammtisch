@@ -14,8 +14,8 @@ assert.equal(run('readerFineBalances().find(x=>x.id===\'c\').amount'),0,'Members
 let html=run('cash()');
 assert.match(html,/Anna &lt;Test&gt;/);
 assert.match(html,/17\.10\.2026/);
-assert.doesNotMatch(html,/<input|<select|<textarea/,'Reader dates remain read only');
-assert.ok(html.indexOf('Offene Strafen pro Mitglied')>html.indexOf('Teststrafe'),'Member totals appear below individual fines');
+assert.doesNotMatch(html,/<input|<textarea|name="date"/,'Reader dates remain read only');
+assert.ok(html.indexOf('Offene Strafen pro Mitglied')<html.indexOf('Teststrafe'),'Member totals appear above individual fines');
 run('data.sections.fines=false');assert.doesNotMatch(run('cash()'),/Offene Strafen pro Mitglied|Teststrafe/,'Fine sharing permissions preserved');
 run('data.sections.fines=true;data.members=[];data.fines=[];data.payments=[]');
 assert.match(run('cash()'),/Keine Mitglieder vorhanden/);

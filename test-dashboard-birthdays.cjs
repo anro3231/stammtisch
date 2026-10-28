@@ -37,7 +37,7 @@ for(const env of [admin,reader]){
 }
 const alerts=[];admin.ctx.alert=message=>alerts.push(message);
 admin.run("cloudReady=true;cloudUser={id:'admin'};birthdays=[{member_id:'a',month:2,day:29}];memberForm('a')");
-assert.match(admin.elements.get('#app').innerHTML,/data-form="member-birthday"/);
+assert.match(admin.elements.get('#app').innerHTML,/name="birthdayDay"/);
 assert.match(admin.elements.get('#app').innerHTML,/value="29"/);
 assert.match(admin.elements.get('#app').innerHTML,/value="2" selected/);
 admin.run('adminEditorRoot=()=>({querySelector:()=>null})');
@@ -47,14 +47,14 @@ admin.ctx.cloudMock={from(table){assert.equal(table,'fantastix_birthdays');retur
  delete(){calls.push(['delete']);return this;},eq(key,value){calls.push(['eq',key,value]);return this;},
  async select(){return {data:rows,error:dbError};}
  };}};
-admin.run('cloudClient=cloudMock');
+admin.run(`cloudClient=cloudMock;persist=()=>{};closeModal=()=>{};function birthdayFD(month,day){const fields={id:'a',name:'Anna',memberNumber:'',active:'on',birthdayMonth:month===null?'':String(month),birthdayDay:day===null?'':String(day)};return {get:key=>fields[key]??null,has:key=>key in fields};}`);
 (async()=>{
- await admin.run("saveAdminBirthday('a',2,30)");assert.equal(calls.length,0);assert.match(alerts.pop(),/gültigen/);
- await admin.run("saveAdminBirthday('a',2,29)");assert.equal(calls[0][0],'upsert');assert.equal(admin.run('birthdays[0].day'),29);assert.match(alerts.pop(),/gespeichert/);
+ await admin.run("saveMember(birthdayFD(2,30))");assert.equal(calls.length,0);assert.match(alerts.pop(),/gültigen/);
+ admin.run('birthdays=[]');await admin.run("saveMember(birthdayFD(2,29))");assert.equal(calls[0][0],'upsert');assert.equal(admin.run('birthdays[0].day'),29);
  dbError={message:'Keine Berechtigung'};
- await admin.run("saveAdminBirthday('a',3,10)");assert.equal(admin.run('birthdays[0].month'),2);assert.match(alerts.pop(),/Keine Berechtigung/);
+ await admin.run("saveMember(birthdayFD(3,10))");assert.equal(admin.run('birthdays[0].month'),2);assert.match(alerts.pop(),/Keine Berechtigung/);
  dbError=null;rows=[{member_id:'a',month:2,day:29}];
- await admin.run("saveAdminBirthday('a',null,null)");assert.equal(admin.run('birthdays.length'),0);assert.match(alerts.pop(),/entfernt/);
- calls=[];admin.run('cloudReady=false');await admin.run("saveAdminBirthday('a',1,1)");assert.equal(calls.length,0);assert.match(alerts.pop(),/Cloud/);
+ await admin.run("saveMember(birthdayFD(null,null))");assert.equal(admin.run('birthdays.length'),0);
+ calls=[];admin.run('cloudReady=false');await admin.run("saveMember(birthdayFD(1,1))");assert.equal(calls.length,0);assert.match(alerts.pop(),/Cloud/);
  console.log('PASS dashboard day boundaries, latest three, today tile, future countdown, streak hints, birthday editing/leap day/validation/cloud failure/deletion/offline.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

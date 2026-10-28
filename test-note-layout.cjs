@@ -41,11 +41,11 @@ run(`cloudUser={id:'admin'};cloudClient={from:()=>({select:()=>({eq:mockNotes})}
  vm.runInContext(fs.readFileSync(__dirname+'/lesen.js','utf8').split("document.addEventListener('submit'")[0],reader);
  vm.runInContext(`profile={member_id:'a'};data={sections:{meetings:true}};deadlines=new Map([['m','2099-01-01T00:00:00Z']]);m={id:'m',attendance:{a:{status:'present'}}};`,reader);
  let panel=vm.runInContext('votePanel(m)',reader);
- assert.match(panel,/<details class="meeting-note-editor"><summary>Notiz hinzufügen \(optional\)<\/summary>/);
- assert.doesNotMatch(panel,/<details[^>]*\bopen\b/);
+ assert.match(panel,/<div class="meeting-note-editor"><label[^>]+>Notiz hinzufügen \(optional\)<\/label>/);
+ assert.doesNotMatch(panel,/<details/);
  assert.match(panel,/maxlength="160"/);assert.match(panel,/data-save-meeting-note="m"/);
  vm.runInContext("m.attendance.a.note='Bestehende Notiz'",reader);
  panel=vm.runInContext('votePanel(m)',reader);
- assert.match(panel,/<summary>Notiz bearbeiten<\/summary>/);assert.match(panel,/value="Bestehende Notiz"/);
- console.log('PASS note layout: admin timestamps before notes, loaded notes per member, absent notes hidden, event updates reordered, compact editor collapsed and existing notes retained.');
+ assert.doesNotMatch(panel,/<summary>/);assert.match(panel,/value="Bestehende Notiz"/);
+ console.log('PASS note layout: admin timestamps before notes, loaded notes per member, absent notes hidden, event updates reordered, compact editor always visible and existing notes retained.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
