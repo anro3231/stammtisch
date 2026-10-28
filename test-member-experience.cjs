@@ -44,7 +44,7 @@ function environment(file){
   }else{
    doc.querySelector('#content').innerHTML=run("votePanel(data.meetings[0])");assert.deepEqual([...doc.querySelectorAll('[data-vote]')].map(b=>b.dataset.vote),['present','unsure','absent']);assert.equal(doc.querySelector('details.meeting-note-editor'),null);assert.ok(doc.querySelector('.meeting-note-input'));
    w.sent=[];run("castVote=(id,status)=>window.sent.push([id,status]);");doc.querySelector('[data-vote="unsure"]').click();assert.deepEqual(JSON.parse(JSON.stringify(w.sent)),[['m','unsure']]);
-   run("data.meetings[0].attendance.a={status:'unsure'};");doc.querySelector('#content').innerHTML=run('votePanel(data.meetings[0])');assert.equal(doc.querySelector('.meeting-note-input'),null);assert.equal(doc.querySelector('[aria-label="Unsicher"]').getAttribute('aria-pressed'),'true');
+   run("data.meetings[0].attendance.a={status:'unsure'};");doc.querySelector('#content').innerHTML=run('votePanel(data.meetings[0])');assert.ok(doc.querySelector('.meeting-note-input'));assert.equal(doc.querySelector('[aria-label="Unsicher"]').getAttribute('aria-pressed'),'true');
    run("excursionVotes=[{excursion_id:'e',member_id:'a',status:'unsure'}]");assert.equal(run('excursionCount("e").unsure'),1);
   }
   env.dom.window.close();

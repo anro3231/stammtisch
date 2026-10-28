@@ -40,7 +40,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.23.1";
+const APP_VERSION = window.FX_VERSION || "3.23.2";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -578,7 +578,7 @@ function meetingForm(id){
  <div class="field"><label>Organisator</label><select name="organizerId" data-organizer-auto="${id?'off':'on'}"><option value="">Nicht festgelegt</option>${organizerMembers.map(person=>`<option value="${person.id}" ${proposed===person.id?'selected':''}>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Notizen</label><textarea name="notes" maxlength="1000" placeholder="Optional">${esc(m.notes||'')}</textarea></div>
  <h3>Anwesenheit</h3>
- ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present" aria-pressed="${entry.status==='present'}" aria-label="Dabei">👍</button><button type="button" class="${entry.status==='unsure'?'on unsure':''}" data-action="attend" data-id="${person.id}" data-status="unsure" aria-pressed="${entry.status==='unsure'}" aria-label="Unsicher">❓</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent" aria-pressed="${entry.status==='absent'}" aria-label="Nicht dabei">👎</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}<small class="vote-note" data-meeting-member-note="${esc(person.id)}" ${entry.status==='present'&&entry.note?'':'hidden'}>${entry.note?'📝 '+esc(entry.note):''}</small></div>`}).join(''):empty('👥','Noch keine Mitglieder')}
+ ${attendanceMembers.length?attendanceMembers.map(person=>{const entry=m.attendance?.[person.id]||{};const linkedFine=data.fines.find(f=>f.meetingId===m.id&&f.memberId===person.id&&f.source==='absence');return `<div class="member-att"><div class="row"><strong>${memberNo(person)!==null?'Nr. '+memberNo(person)+' · ':''}${esc(person.name)}</strong><div class="seg"><button type="button" class="${entry.status==='present'?'on yes':''}" data-action="attend" data-id="${person.id}" data-status="present" aria-pressed="${entry.status==='present'}" aria-label="Dabei">👍</button><button type="button" class="${entry.status==='unsure'?'on unsure':''}" data-action="attend" data-id="${person.id}" data-status="unsure" aria-pressed="${entry.status==='unsure'}" aria-label="Unsicher">❓</button><button type="button" class="${entry.status==='absent'?'on no':''}" data-action="attend" data-id="${person.id}" data-status="absent" aria-pressed="${entry.status==='absent'}" aria-label="Nicht dabei">👎</button></div></div><input type="hidden" name="status-${person.id}" value="${esc(entry.status||'')}">${absenceFields(person.id,entry,linkedFine)}${entry.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(entry.updatedAt))}</small>`:''}<small class="vote-note" data-meeting-member-note="${esc(person.id)}" ${['present','unsure'].includes(entry.status)&&entry.note?'':'hidden'}>${entry.note?'📝 '+esc(entry.note):''}</small></div>`}).join(''):empty('👥','Noch keine Mitglieder')}
  ${id?'<small id="member-cloud-notes" class="muted tiny" role="status">Mitgliedernotizen werden geladen …</small>':''}
  ${footer(id?'Speichern':'Stammtisch speichern')}${id?`<div class="separator"></div><button type="button" class="danger-btn" data-action="meeting-delete" data-id="${m.id}">Stammtisch löschen</button>`:''}</form>`,'meeting',id);
  if(id)loadAdminMeetingNotes(id);
@@ -595,8 +595,8 @@ async function loadAdminMeetingNotes(id){
    const memberId=note.dataset.meetingMemberNote;
    const field=[...root.querySelectorAll('input[name]')].find(input=>input.name==='status-'+memberId);
    const fallback=data.meetings.find(x=>x.id===id)?.attendance?.[memberId]?.note||'';
-   const text=notes.get(memberId)||fallback;
-   note.textContent=text?'📝 '+text:'';note.hidden=field?.value!=='present'||!text;
+   const text=notes.has(memberId)?notes.get(memberId):fallback;
+   note.textContent=text?'📝 '+text:'';note.hidden=!['present','unsure'].includes(field?.value)||!text;
   }
   el.textContent='';el.hidden=true;
  }catch(error){if(el.isConnected)el.textContent='Mitgliedernotizen konnten nicht geladen werden.';}
@@ -614,7 +614,7 @@ function fineView(id){
  const payments=data.payments.filter(p=>p.fineId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
  modal('Strafendetails',`<div class="stack"><div><label>Mitglied</label><strong>${esc(member(f.memberId)?.name||'Unbekannt')}</strong></div><div><label>Erfasst am</label><strong>${fmtDate(f.date)}</strong></div><div><label>Grund</label><strong>${esc(f.reason)}</strong></div><div class="row"><div><label>Gesamtbetrag</label><strong>${money(f.amountCents)}</strong></div><div class="right"><label>Offen</label><strong>${money(fineOpen(f))}</strong></div></div></div><div class="separator"></div><h3>Zahlungen</h3>${payments.length?payments.map(p=>`<div class="item"><div class="details"><strong>${money(p.amountCents)}</strong><small>${esc(p.method||'Bar')} ${p.note?`· ${esc(p.note)}`:''}</small></div><button class="smallbtn" data-action="payment-delete" data-id="${p.id}">Stornieren</button></div>`).join(''):empty('🧾','Noch keine Zahlung')}<div class="foot">${fineOpen(f)?`<button class="button" data-action="fine-pay" data-id="${f.id}">Zahlung erfassen</button>`:''}<button class="ghost" data-action="close">Schließen</button></div>${payments.length?'':'<div class="separator"></div><button class="danger-btn" data-action="fine-delete" data-id="'+f.id+'">Unbezahlte Strafe löschen</button>'}`);
 }
-function attStatus(id,status){const root=adminEditorRoot();const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;if(adminEntry)adminEntry.dirty=true;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':b.dataset.status==='unsure'?'unsure':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');const note=parent.querySelector('[data-meeting-member-note]');if(note)note.hidden=field.value!=='present'||!note.textContent;}
+function attStatus(id,status){const root=adminEditorRoot();const field=root.querySelector(`[name="status-${id}"]`);if(!field)return;if(adminEntry)adminEntry.dirty=true;field.value=field.value===status?'':status;const parent=field.closest('.member-att');parent.querySelectorAll('[data-action="attend"]').forEach(b=>b.className=(field.value===b.dataset.status?`on ${b.dataset.status==='present'?'yes':b.dataset.status==='unsure'?'unsure':'no'}`:''));parent.querySelector('.absence-extra').classList.toggle('hidden',field.value!=='absent');const note=parent.querySelector('[data-meeting-member-note]');if(note)note.hidden=!['present','unsure'].includes(field.value)||!note.textContent;}
 async function saveMember(fd){
  const id=String(fd.get('id')||''),name=String(fd.get('name')||'').trim(),rawNo=String(fd.get('memberNumber')||'').trim(),number=rawNo===''?null:Number(rawNo);
  if(!name)return alert('Bitte einen Namen eingeben.');
@@ -656,11 +656,11 @@ function saveMeeting(fd){
    const status=String(fd.get(`status-${m.id}`)||'');
    if(status==='present'){
      const prev=previousMeeting?.attendance?.[m.id];
-     const presentNote=prev?.status==='present'?String(prev.note||''):'';
+     const presentNote=['present','unsure'].includes(prev?.status)?String(prev.note||''):'';
      const changed=prev?.status!=='present'||String(prev.note||'')!==presentNote;
      attendance[m.id]=changed?{status:'present',note:presentNote,source:'admin',updatedAt:new Date().toISOString()}:prev;
    }
-   if(status==='unsure'){const prev=previousMeeting?.attendance?.[m.id];attendance[m.id]=prev?.status==='unsure'?prev:{status:'unsure',source:'admin',updatedAt:new Date().toISOString()};}
+   if(status==='unsure'){const prev=previousMeeting?.attendance?.[m.id];attendance[m.id]=prev?.status==='unsure'?prev:{status:'unsure',note:['present','unsure'].includes(prev?.status)?String(prev.note||''):'',source:'admin',updatedAt:new Date().toISOString()};}
    if(status==='absent'){
      const reason=String(fd.get(`reason-${m.id}`)||'').trim(),note=String(fd.get(`note-${m.id}`)||'').trim();
      const prev=previousMeeting?.attendance?.[m.id];
@@ -970,7 +970,7 @@ function queueSync(){
 function publicSnapshot(opts){
  const allowMembers=Boolean(opts.members),allowMeetings=Boolean(opts.meetings),allowAbsences=Boolean(opts.absences&&opts.meetings),allowFines=Boolean(opts.fines),allowCash=Boolean(opts.cash);
  const members=(allowMembers||opts.excursions)?data.members.map(m=>({id:m.id,name:m.name,memberNumber:m.memberNumber??null,active:m.active!==false,...(allowMembers?{historicalCount:n(m.historicalCount),historical2026Count:n(m.historical2026Count)}:{})})):[];
- const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'18:30',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>['present','absent','unsure'].includes(v?.status)).map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,note:v.status==='present'?v.note||'':'',source:v.source||'admin'}]))})):[];
+ const meetings=allowMeetings?data.meetings.map(m=>({id:m.id,date:m.date,location:m.location||'',notes:allowAbsences?(m.notes||''):'',organizerId:m.organizerId||null,time:m.time||'18:30',attendance:Object.fromEntries(data.members.map(p=>[p.id,effectiveAttendance(m,p.id)]).filter(([,v])=>['present','absent','unsure'].includes(v?.status)).map(([id,v])=>[id,allowAbsences?{status:v.status,reason:v.reason||'',note:v.note||'',source:v.source||'admin'}:{status:v.status,note:['present','unsure'].includes(v.status)?v.note||'':'',source:v.source||'admin'}]))})):[];
  const fines=allowFines?data.fines.map(f=>({id:f.id,memberId:f.memberId,meetingId:f.meetingId||null,date:f.date||'',reason:(f.source==='absence'&&!allowAbsences?'Abwesenheitsstrafe':f.reason),amountCents:n(f.amountCents),source:f.source||'manual'})):[];
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyDay:cash().monthlyDay||1,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;

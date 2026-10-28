@@ -32,6 +32,10 @@ Nach Abstimmungen oder Speichern wird weiterhin ein neuer Datenabruf erzwungen. 
 
 Prüfung mit simulierten langsamen Antworten: `node test-reader-speed.cjs` (benötigt `jsdom`).
 
+## Notizen ab Version 3.23.2
+
+Bei 👍 Dabei und ❓ Unsicher ist das optionale Notizfeld dauerhaft sichtbar (maximal 160 Zeichen, innerhalb der Abstimmungsfrist). Gespeicherte Notizen erscheinen auch beim Admin und im Abstimmungsstand. Die Supabase-Migration `fantastix_unsure_meeting_notes` ergänzt die Veröffentlichung von Unsicher-Notizen und bindet die Schreibrechte der Notizentabelle ausdrücklich an das eigene Mitglied.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.

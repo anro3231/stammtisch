@@ -103,13 +103,13 @@ function voteTime(value){
  return new Intl.DateTimeFormat('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(parsed).replace(',', ' · ')+' Uhr';
 }
 function meetingNote(id,memberId){return meetingNotes.find(x=>x.meeting_id===id&&x.member_id===memberId)?.note||"";}
-function meetingNoteDisplay(m,memberId){return meetingNote(m.id,memberId)||(effective(m,memberId)?.status==='present'?effective(m,memberId)?.note||'':'');}
+function meetingNoteDisplay(m,memberId){const saved=meetingNotes.find(x=>x.meeting_id===m.id&&x.member_id===memberId);return saved?String(saved.note||''):(['present','unsure'].includes(effective(m,memberId)?.status)?effective(m,memberId)?.note||'':'');}
 function rsvpRoster(m){
  if(!section('members'))return '';
  const count=rsvpCounts(m);
  return `<div class="attendee-block"><div class="roster-header"><strong>${m.date<=today()?'Anwesenheit':'Abstimmungsstand'}</strong><small>${count.yes} Dabei · ${count.no} Nicht dabei · ${count.unsure||0} unsicher · ${count.open} offen</small></div>
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
- const a=effective(m,p.id),note=a?.status==='present'?meetingNoteDisplay(m,p.id):'';
+ const a=effective(m,p.id),note=['present','unsure'].includes(a?.status)?meetingNoteDisplay(m,p.id):'';
  return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
  <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':a.status==='unsure'?'gray':'no-chip'}">${!a?'Noch offen':a.status==='present'?'👍 Dabei':a.status==='unsure'?'❓ Unsicher':'👎 Nicht dabei'}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
@@ -200,7 +200,7 @@ function votePanel(m,compact=false){
  const summary=closed?'Abstimmung geschlossen':`Frist: ${deadlineLabel(deadline)}`;
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions">${[['present','👍','Dabei','yes'],['unsure','❓','Unsicher','unsure'],['absent','👎','Nicht dabei','no']].map(([value,emoji,label,tone])=>`<button type="button" class="vote-btn ${status===value?'selected '+tone:''}" data-vote="${value}" data-meeting-id="${esc(m.id)}" aria-label="${label}" title="${label}" aria-pressed="${status===value}" ${locked||closed||busy?'disabled':''}>${emoji}</button>`).join('')}</div>
- ${status==='present'&&!locked&&!closed?`<div class="meeting-note-editor"><label class="note-input-label" for="meeting-note-${esc(m.id)}">Notiz hinzufügen (optional)</label><div class="meeting-note-fields"><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme etwas später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Speichern</button></div></div>`:''}
+ ${['present','unsure'].includes(status)&&!locked&&!closed?`<div class="meeting-note-editor"><label class="note-input-label" for="meeting-note-${esc(m.id)}">Notiz hinzufügen (optional)</label><div class="meeting-note-fields"><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme etwas später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Speichern</button></div></div>`:''}
  ${status?`<small class="muted">${status==='present'?'Zusage':status==='unsure'?'Unsicher':'Absage'}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
@@ -658,7 +658,7 @@ async function saveMeetingNote(id,fromVote=false){
  if(!input)return;
  const note=input.value.trim();if(note.length>160)return alert('Maximal 160 Zeichen erlaubt.');
  const meeting=data?.meetings?.find(m=>m.id===id);
- if(!meeting||effective(meeting,profile.member_id)?.status!=='present')return alert('Notizen sind nur bei einer Zusage möglich.');
+ if(!meeting||!['present','unsure'].includes(effective(meeting,profile.member_id)?.status))return alert('Notizen sind bei einer Zusage oder „Unsicher“ möglich.');
  const deadline=deadlines.get(id);if(!deadline||Date.now()>=new Date(deadline).getTime())return alert('Die Abstimmungsfrist ist abgelaufen.');
  const {error}=await cloud.from('fantastix_meeting_notes').upsert({meeting_id:id,member_id:profile.member_id,note},{onConflict:'meeting_id,member_id'});
  if(error)return alert('Notiz konnte nicht gespeichert werden: '+error.message+' (SQL 19 installieren)');
