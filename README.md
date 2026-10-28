@@ -15,7 +15,7 @@ Die Dateien werden über GitHub Pages veröffentlicht; ein Build-Schritt ist nic
 
 ## Datenbank und Benachrichtigungen
 
-Die vorhandenen SQL-Dateien bleiben als Einrichtungscode und Wartungsreferenz erhalten. Das Repository enthält nicht alle bereits produktiv ausgeführten Migrationen oder alle serverseitigen Push-Komponenten. Es ist daher kein vollständiges Paket zum Neuaufsetzen der Datenbank. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.
+Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.
 
 - [Push-Fristerinnerungen](README_ERINNERUNGEN.md): technische Einrichtung und Versandverhalten.
 - [Glockenmeldungen](README_GLOCKENMELDUNGEN.md): Ereignisse und Empfänger.
@@ -25,7 +25,7 @@ Diese technischen Anleitungen beschreiben einzelne Einführungsschritte. Hinweis
 
 ## Tests
 
-Die Dateien `test-*.cjs` enthalten Prüfungen für Funktionen, Darstellung und Benachrichtigungen. Sie werden mit Node.js ausgeführt, je nach Test mit `jsdom`, `@electric-sql/pglite` oder `web-push`. Einige Servertests benötigen zusätzlich die im Repository fehlenden Migrationen bzw. Serverdateien.
+Die Dateien `test-*.cjs` enthalten Prüfungen für Funktionen, Darstellung und Benachrichtigungen. Sie werden mit Node.js ausgeführt, je nach Test mit `jsdom`, `@electric-sql/pglite` oder `web-push`. Datenbanktests, die SQL-Dateien laden, lassen sich nach deren Entfernung nicht unmittelbar ausführen. Dafür müssen die passenden Migrationen aus der Git-Historie bzw. dem ursprünglichen Update-Paket wiederhergestellt werden; einige benötigte Migrationen und Serverdateien waren bereits zuvor nicht im Repository enthalten.
 
 Beispiel für die Prüfungen der aktuellen Kassa und des Designs bei installiertem `jsdom`:
 
