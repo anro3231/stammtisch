@@ -40,7 +40,7 @@ assert.equal(admin.run('adminEntry.kind'),'member');assert.equal(admin.run('page
 assert.equal(admin.elements.get('#dialog')?.open??false,false,'Member details open as a page');
 assert.match(detail,/name="name"/);assert.match(detail,/name="memberNumber"/);assert.match(detail,/name="active"/);
 assert.match(detail,/Aktuelle Stammtischserie/);assert.match(detail,/Offene Strafen[\s\S]*class="value">2/);
-assert.match(detail,/8,00/);assert.match(detail,/✓ Dabei/);assert.match(detail,/👎 Nicht dabei/);
+assert.match(detail,/8,00/);assert.match(detail,/aria-label="Dabei">👍/);assert.match(detail,/aria-label="Nicht dabei">👎/);
 assert.match(detail,/Gasthaus &lt;Nord&gt;/);assert.doesNotMatch(detail,/2099/);
 admin.run('adminEntry.dirty=true');admin.confirm(false);assert.equal(admin.run('leaveAdminEntry()'),false);
 admin.confirm(true);assert.equal(admin.run('leaveAdminEntry()'),true);assert.equal(admin.run('page'),'members');
@@ -55,7 +55,7 @@ reader.listeners.click({target:{closest:s=>s==='[data-reader-member]'?{dataset:{
 detail=reader.elements.get('#content').innerHTML;
 assert.equal(reader.run('readerEntry.kind'),'member');assert.match(detail,/Anna &lt;A&gt;/);
 assert.match(detail,/Offene Strafen[\s\S]*class="value">2/);assert.match(detail,/8,00/);
-assert.match(detail,/✓ Dabei/);assert.match(detail,/👎 Nicht dabei/);assert.doesNotMatch(detail,/<form|<input|<select|data-vote|data-action=/,'Reader details contain no edit actions');
+assert.match(detail,/aria-label="Dabei">👍/);assert.match(detail,/aria-label="Nicht dabei">👎/);assert.doesNotMatch(detail,/<form|<input|<select|data-vote|data-action=/,'Reader details contain no edit actions');
 reader.run('renderApp()');assert.match(reader.elements.get('#content').innerHTML,/Aktuelle Stammtischserie/,'Refresh keeps member details open');
 reader.listeners.click({target:{closest:s=>s==='[data-reader-back]'?{}:null}});assert.equal(reader.run('readerEntry'),null);assert.equal(reader.run('tab'),'members');
 reader.run("data.sections.fines=false;data.sections.meetings=false");

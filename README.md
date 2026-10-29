@@ -40,6 +40,10 @@ Bei 👍 Dabei und ❓ Unsicher ist das optionale Notizfeld dauerhaft sichtbar (
 
 Die Summen für Stammtische und Events fassen „Unsicher“ und unbeantwortete Stimmen unter „Unsicher/noch offen“ zusammen. Einzelne Rückmeldungen und die Auswahl ❓ Unsicher bleiben unverändert. Die Einzelliste der Strafen zeigt zunächst 10 Einträge; „Mehr laden“ ergänzt jeweils 10 weitere. Ein Wechsel des Mitgliederfilters beginnt wieder mit 10 Einträgen.
 
+## Kompakte Abstimmungsanzeige ab Version 3.23.7
+
+Dashboard und Terminansichten zeigen 👍 Zusagen, 👎 Absagen und ❓ tatsächlich unsichere Stimmen ausschließlich als Emoji mit Anzahl. Unbeantwortete Stimmen werden in diesen Summen nicht mehr angezeigt. Einzelne Abstimmungsstatus verwenden ebenfalls nur die Emojis; verständliche Bezeichnungen für Screenreader bleiben erhalten. Die Strafenübersicht im Adminmodus zeigt wie der Lesemodus zuerst die offenen Beträge pro Mitglied und danach die einzelnen Strafen mit Filter und „Mehr laden“.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.

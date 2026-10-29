@@ -20,10 +20,10 @@ function environment(file){
   const env=environment(file),{w,doc,run}=env,admin=file==='app.js';
   run(admin?'render()':'renderApp()');
   run("excursionVotes=[{excursion_id:'e',member_id:'a',status:'yes'},{excursion_id:'e',member_id:'b',status:'unsure'},{excursion_id:'e',member_id:'c',status:'no'}]");
-  const summary=run(admin?'adminCountSummary(excursionVoteCounts("e"))':'readerCountSummary(excursionCount("e"))');assert.match(summary,/2 Unsicher\/noch offen/);assert.ok(!summary.includes('unsicher'));
-  if(admin)assert.match(run('eventVoteSummary("e")'),/1 dabei \/ 1 nicht dabei \/ 2 Unsicher\/noch offen/);
-  else{const roster=doc.createElement('div');roster.innerHTML=run('excursionRoster(data.excursions[0])');assert.match(roster.querySelector('.roster-header').textContent,/2 Unsicher\/noch offen/);assert.match(roster.textContent,/❓ Unsicher/,'Individual unsure votes remain visible');}
-  const preview=doc.querySelector('.rsvp-preview');assert.match(preview.textContent,/1 Zusagen.*1 Absagen.*2 Unsicher\/noch offen/);assert.equal(preview.querySelectorAll('[data-profile-photo]').length,1);
+  const summary=run(admin?'adminCountSummary(excursionVoteCounts("e"))':'readerCountSummary(excursionCount("e"))');const counts=doc.createElement('div');counts.innerHTML=summary;assert.match(counts.textContent,/👍 1.*👎 1.*❓ 1/);assert.doesNotMatch(counts.textContent,/offen|Dabei|Zusagen|Absagen|Unsicher/);assert.equal(counts.querySelectorAll('[role="img"]').length,3);for(const [status,emoji,label] of [['present','👍','Dabei'],['absent','👎','Nicht dabei'],['unsure','❓','Unsicher']]){const badge=doc.createElement('div');badge.innerHTML=run(`voteStatusHTML('${status}')`);assert.equal(badge.textContent,emoji);assert.equal(badge.firstElementChild.getAttribute('aria-label'),label);}assert.equal(run('voteStatusHTML(undefined)'),'', 'Unanswered status has no visible label');
+  if(admin)assert.match(run('eventVoteSummary("e")'),/👍 1 · 👎 1 · ❓ 1/);
+  else{const roster=doc.createElement('div');roster.innerHTML=run('excursionRoster(data.excursions[0])');assert.match(roster.querySelector('.roster-header').textContent,/👍 1.*👎 1.*❓ 1/);assert.match(roster.textContent,/❓/,'Individual unsure votes remain visible');}
+  const preview=doc.querySelector('.rsvp-preview');assert.match(preview.textContent,/👍 1.*👎 1.*❓ 1/);assert.equal(preview.querySelectorAll('[data-profile-photo]').length,1);
   preview.querySelector('img').click();assert.ok(doc.querySelector('#profile-photo-viewer').open);assert.equal(doc.querySelector('.profile-photo-large').src,'https://example.test/photo.jpg');doc.querySelector('.photo-viewer-close').click();assert.equal(doc.querySelector('.profile-photo-large').hasAttribute('src'),false);
   run(admin?"page='members';render()":"tab='members';renderApp()");
   assert.ok(!doc.querySelector('.member-list-row').textContent.includes('Ewig'));assert.equal(doc.querySelectorAll('.member-list-row [data-profile-photo]').length,1);assert.equal(doc.querySelector('button [data-profile-photo]'),null,'No nested interactive photo control');
@@ -33,7 +33,7 @@ function environment(file){
   // Reader uses the nav key cash in this version; render directly to avoid navigation assumptions.
   if(!doc.querySelector('#fine-member-filter'))doc.querySelector('#content').innerHTML=run('cash()');
   const headings=[...doc.querySelectorAll(admin?'#app h2':'#content h2')].map(x=>x.textContent);
-  assert.equal(headings.indexOf('Einzelne Strafen')<headings.indexOf('Offene Strafen pro Mitglied'),admin);
+  assert.ok(headings.indexOf('Offene Strafen pro Mitglied')<headings.indexOf('Einzelne Strafen'),'Same fine section order in both modes');
   assert.equal(doc.querySelectorAll('[data-fine-row]').length,2);const select=doc.querySelector('#fine-member-filter');select.value='a';select.dispatchEvent(new w.Event('change',{bubbles:true}));
   if(!doc.querySelector('#fine-member-filter'))doc.querySelector('#content').innerHTML=run('cash()');
   assert.equal(doc.querySelectorAll('[data-fine-row]').length,1);assert.ok(doc.querySelector('[data-fine-row="f1"]'));assert.equal(run('data.fines.length'),2);

@@ -27,7 +27,7 @@ run(`cloudUser={id:'admin'};cloudClient={from:()=>({select:()=>({eq:mockNotes})}
  assert.match(html,/Abgestimmt:[^<]*<\/small><small class="vote-note">📝 Eventnotiz<\/small>/);
  // Updating an existing row also reorders an old note behind its timestamp.
  const parent={children:[],appendChild(node){this.children=this.children.filter(x=>x!==node);this.children.push(node);node.parentElement=this;}};
- const label={className:'excursion-vote-label',parentElement:parent};
+ const label={className:'excursion-vote-label',parentElement:parent,setAttribute(){}};
  const note={className:'vote-note',parentElement:parent};
  const stamp={className:'vote-stamp',parentElement:parent};
  parent.children=[label,note,stamp];

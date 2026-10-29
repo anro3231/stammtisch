@@ -27,6 +27,9 @@ function compactFineListHTML(items,admin=false){
  if(!fines.length)return '<p class="muted">Keine Strafen für diese Auswahl.</p>';
  return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
+function voteStatusSymbol(status){return {present:'👍',yes:'👍',absent:'👎',no:'👎',unsure:'❓'}[status]||'';}
+function voteStatusLabel(status){return {present:'Dabei',yes:'Dabei',absent:'Nicht dabei',no:'Nicht dabei',unsure:'Unsicher'}[status]||'Noch keine Antwort';}
+function voteStatusHTML(status){const symbol=voteStatusSymbol(status);return symbol?`<span role="img" aria-label="${voteStatusLabel(status)}">${symbol}</span>`:'';}
 function uiSymbol(name,fallback){return `<span class="ui-symbol" aria-hidden="true">${window.FantastixUI?.icon(name)||esc(fallback)}</span>`;}
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
@@ -44,7 +47,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.23.6";
+const APP_VERSION = window.FX_VERSION || "3.23.7";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -284,7 +287,7 @@ function meetingVoteDeadline(m){
 }
 function dashboardAttendanceHTML(m){
  const people=data.members.filter(p=>p.active!==false),yes=people.filter(p=>effectiveAttendance(m,p.id)?.status==='present');
- return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>memberAvatar(p.id,initials(p.name))).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div><span>${yes.length} Zusagen · ${people.filter(p=>effectiveAttendance(m,p.id)?.status==='absent').length} Absagen · ${people.filter(p=>!['present','absent'].includes(effectiveAttendance(m,p.id)?.status)).length} Unsicher/noch offen</span></div>`;
+ return `<div class="rsvp-preview"><div class="rsvp-faces">${yes.slice(0,8).map(p=>memberAvatar(p.id,initials(p.name))).join('')}${yes.length>8?`<span class="rsvp-more">+${yes.length-8}</span>`:''}</div>${adminCountSummary({yes:yes.length,no:people.filter(p=>effectiveAttendance(m,p.id)?.status==='absent').length,unsure:people.filter(p=>effectiveAttendance(m,p.id)?.status==='unsure').length})}</div>`;
 }
 function homeHTML(){
  const completed=data.meetings.filter(m=>m.date<today()).sort((a,b)=>b.date.localeCompare(a.date));
@@ -329,7 +332,7 @@ function strongestStreakHTML(){
 }
 function memberActivityHTML(id){
  const open=data.fines.filter(f=>f.memberId===id&&fineOpen(f)>0),all=pastSeriesMeetings(),recent=all.slice(0,memberHistoryLimits.get(id)||10);
- return `<div class="member-summary"><div class="metric"><small>Aktuelle Stammtischserie ${uiSymbol('flame','🔥')}</small><div class="value">${currentStreak(id)}</div><small>Stammtische in Folge</small></div><div class="metric"><small>Offene Strafen</small><div class="value">${open.length}</div><small>${money(open.reduce((sum,f)=>sum+fineOpen(f),0))} offen</small></div></div><h3>Stammtisch-Historie</h3><p class="muted tiny">${recent.length} von ${all.length} Stammtischen</p><div class="list member-history">${recent.map(m=>{const status=effectiveAttendance(m,id)?.status;return `<div class="item"><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')}</small></div><span class="chip ${status==='absent'?'red':status==='present'?'':'gray'}">${status==='present'?'✓ Dabei':status==='absent'?'👎 Nicht dabei':status==='unsure'?'❓ Unsicher':'Nicht erfasst'}</span></div>`;}).join('')||'<p class="muted">Noch keine vergangenen Stammtische.</p>'}</div>${recent.length<all.length?`<button type="button" class="ghost history-more" data-action="member-history-more" data-id="${esc(id)}">Mehr laden</button>`:''}`;
+ return `<div class="member-summary"><div class="metric"><small>Aktuelle Stammtischserie ${uiSymbol('flame','🔥')}</small><div class="value">${currentStreak(id)}</div><small>Stammtische in Folge</small></div><div class="metric"><small>Offene Strafen</small><div class="value">${open.length}</div><small>${money(open.reduce((sum,f)=>sum+fineOpen(f),0))} offen</small></div></div><h3>Stammtisch-Historie</h3><p class="muted tiny">${recent.length} von ${all.length} Stammtischen</p><div class="list member-history">${recent.map(m=>{const status=effectiveAttendance(m,id)?.status;return `<div class="item"><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')}</small></div><span class="chip ${status==='absent'?'red':status==='present'?'':'gray'}">${voteStatusSymbol(status)?voteStatusHTML(status):'Nicht erfasst'}</span></div>`;}).join('')||'<p class="muted">Noch keine vergangenen Stammtische.</p>'}</div>${recent.length<all.length?`<button type="button" class="ghost history-more" data-action="member-history-more" data-id="${esc(id)}">Mehr laden</button>`:''}`;
 }
 function loadMoreMemberHistory(id){
  if(adminEntry?.kind!=='member'||adminEntry.id!==id)return;
@@ -337,7 +340,7 @@ function loadMoreMemberHistory(id){
  const activity=$('#member-activity');if(activity)activity.innerHTML=memberActivityHTML(id);
 }
 function membersHTML(){const members=[...data.members].sort(byMemberNo);return `${pageHead('','Mitglieder','')}<div class="toolbar"><button class="button" data-action="member-new">+ Mitglied</button><span class="muted tiny">${data.members.length} Mitglieder</span></div><div class="card reader-entry-list">${members.length?members.map(m=>`<div class="reader-entry member-list-row">${memberAvatar(m.id,memberNo(m)===null?initials(m.name):String(memberNo(m)))}<button type="button" class="member-open" data-action="member-edit" data-id="${esc(m.id)}"><span class="reader-entry-info member-entry-info"><strong>${memberNo(m)===null?'':`Nr. ${memberNo(m)} · `}${esc(m.name)} ${m.active===false?'<span class="chip gray">Archiv</span>':''}</strong><small class="member-last-online">${esc(memberLastOnline(m.id))}</small></span><span class="reader-entry-end">Öffnen ›</span></button></div>`).join(''):empty('👥','Noch keine Mitglieder')}</div>`;}
-function adminCountSummary(count){return `<span class="reader-counts"><span>${count.yes} Dabei</span><span>${count.no} Nicht dabei</span><span>${(count.open||0)+(count.unsure||0)} Unsicher/noch offen</span></span>`;}
+function adminCountSummary(count){return `<span class="reader-counts"><span role="img" aria-label="${count.yes} Zusagen">👍 ${count.yes}</span><span role="img" aria-label="${count.no} Absagen">👎 ${count.no}</span><span role="img" aria-label="${count.unsure||0} unsicher">❓ ${count.unsure||0}</span></span>`;}
 function meetingsHTML(){
  const meetings=[...data.meetings].sort((a,b)=>b.date.localeCompare(a.date));
  return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>
@@ -353,13 +356,13 @@ function excursionsHTML(){
  <section class="card reader-entry-list">${list.map(x=>`<button type="button" class="reader-entry" data-action="excursion-edit" data-id="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen"><span class="reader-entry-info"><strong>${esc(x.title)}</strong><span>${excursionPeriod(x)}${x.location?' · '+esc(x.location):''}</span><small>Organisatoren: ${esc(excursionOrganizers(x))}</small>${adminCountSummary(excursionVoteCounts(x.id))}</span><span class="reader-entry-end">${termStatusHTML(eventStatus(x))}<span>Öffnen ›</span></span></button>`).join('')||'<p class="muted">Noch keine Events eingetragen.</p>'}</section>
  <p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
 }
-function eventVoteSummary(id){const c=excursionVoteCounts(id);return `${c.yes} dabei / ${c.no} nicht dabei / ${c.open+c.unsure} Unsicher/noch offen`;}
+function eventVoteSummary(id){const c=excursionVoteCounts(id);return `👍 ${c.yes} · 👎 ${c.no} · ❓ ${c.unsure}`;}
 function excursionForm(id){
  const x=(data.excursions||[]).find(v=>v.id===id)||{id:'',title:'',date:'',endDate:'',location:'',notes:'',organizerIds:[],organizerOther:'',completed:false};
  const already=excursionVotes.filter(v=>v.excursion_id===x.id);
  const ownMemberId=readerProfiles.find(p=>p.user_id===cloudUser?.id)?.member_id;
  const countLabel=()=>eventVoteSummary(x.id);
- const voteHTML=id?`<div class="separator"></div><h3>Zusagen · <span id="excursion-vote-count">${countLabel()}</span></h3>
+ const voteHTML=id?`<div class="separator"></div><h3>Rückmeldungen · <span id="excursion-vote-count">${countLabel()}</span></h3>
  <p class="hint">Als Administrator kannst du jede Rückmeldung direkt ändern – auch nach dem Event. Eine Korrektur für ein anderes Mitglied bleibt geschützt, bis du sie auf „Offen“ zurücksetzt.</p>
  ${!ownMemberId?'<p class="hint">Tipp: Dein eigenes Admin-Konto kannst du unter Mehr → Benutzer verwalten einem Mitglied zuordnen.</p>':''}
  ${!cloudReady?'<p class="notice warning">Zum Abstimmen bitte zuerst die Admin-Cloud verbinden.</p>':''}
@@ -368,7 +371,7 @@ function excursionForm(id){
   const v=already.find(v=>v.member_id===m.id),isMine=ownMemberId===m.id;
   return `<div class="item excursion-vote-admin-row" data-excursion-row="${esc(m.id)}">
    <div class="details"><strong>${esc(m.name)}${isMine?' <span class="chip">Ich</span>':''}</strong>
-   <small class="excursion-vote-label">${v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen'}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}</div>
+   <small class="excursion-vote-label">${voteStatusHTML(v?.status)}${v?.admin_locked?' · Admin-Korrektur':''}</small>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.status==='yes'&&v.note?`<small class="vote-note">📝 ${esc(v.note)}</small>`:''}</div>
    <div class="excursion-admin-vote-buttons" role="group" aria-label="Eventszusage für ${esc(m.name)}">
     ${[['yes','👍'],['unsure','❓'],['no','👎'],['clear','Offen']].map(([status,label])=>`<button type="button" class="excursion-admin-choice ${(!v&&status==='clear')||v?.status===status?'is-selected':''}" data-action="excursion-admin-vote" data-id="${esc(x.id)}" data-member="${esc(m.id)}" data-status="${status}" aria-label="${status==='yes'?'Dabei':status==='no'?'Nicht dabei':status==='unsure'?'Unsicher':'Offen'}" aria-pressed="${String((!v&&status==='clear')||v?.status===status)}" ${!cloudReady||!!excursionVoteWarning?'disabled':''}>${label}</button>`).join('')}
    </div></div>`;
@@ -392,7 +395,7 @@ function updateExcursionVoteControls(id){
  const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=eventVoteSummary(id);
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
-  if(label){label.textContent=(v?.status==='yes'?'✓ Dabei':v?.status==='no'?'👎 Nicht dabei':v?.status==='unsure'?'❓ Unsicher':'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
+  if(label){label.setAttribute('aria-label',voteStatusLabel(v?.status));label.textContent=voteStatusSymbol(v?.status)+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
   for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
    const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
    button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));
@@ -438,8 +441,8 @@ function finesHTML(){
  <section class="card"><div class="row"><h2>Kassenbuch</h2><button class="smallbtn" data-action="cash-expense">+ Ausgabe</button></div>
  ${entries.length?`<div class="list">${entries.map(t=>`<div class="item"><div class="details"><strong>${t.type==='monthly'?'Monatsbeiträge '+esc(t.month):t.type==='expense'?'Ausgabe':t.type==='adjustment'?'Kontostand angepasst':'Strafe bezahlt'}</strong><small>${esc(t.note||'')}${t.type==='monthly'?` · ${t.memberCount} × ${money(t.perMemberCents)}`:''}</small></div><div class="right"><strong class="cash-amount ${t.amountCents<0?'negative':'positive'}">${t.amountCents>0?'+':''}${money(t.amountCents)}</strong>${t.type==='expense'||t.type==='adjustment'?`<div><button class="smallbtn" data-action="cash-reverse" data-id="${t.id}">Stornieren</button></div>`:''}</div></div>`).join('')}</div>`:empty('📒','Noch keine Buchungen')}</section>
  <div class="toolbar"><button class="button" data-action="fine-new">+ Strafe</button></div>
- <section class="card"><h2>Einzelne Strafen</h2>${filteredFineListHTML(fines,true)}</section>
- <div class="card"><h2>Offene Strafen pro Mitglied</h2>${data.members.length?`<div class="list">${[...data.members].sort((a,b)=>{const aa=data.fines.filter(f=>f.memberId===a.id).reduce((s,f)=>s+fineOpen(f),0),bb=data.fines.filter(f=>f.memberId===b.id).reduce((s,f)=>s+fineOpen(f),0);return bb-aa||byName(a,b)}).map(m=>{const mf=fines.filter(f=>f.memberId===m.id),open=mf.reduce((s,f)=>s+fineOpen(f),0);return `<div class="item"><div class="avatar">${esc(initials(m.name))}</div><div class="details"><strong>${esc(m.name)}</strong><small>${mf.length} Strafen</small></div><span class="number ${open?'':'muted'}">${money(open)}</span></div>`}).join('')}</div>`:empty('💶','Noch keine Mitglieder')}</div>${transferAccountHTML()}`;
+ <div class="card"><h2>Offene Strafen pro Mitglied</h2>${data.members.length?`<div class="list">${[...data.members].sort((a,b)=>{const aa=data.fines.filter(f=>f.memberId===a.id).reduce((s,f)=>s+fineOpen(f),0),bb=data.fines.filter(f=>f.memberId===b.id).reduce((s,f)=>s+fineOpen(f),0);return bb-aa||byName(a,b)}).map(m=>{const mf=fines.filter(f=>f.memberId===m.id),open=mf.reduce((s,f)=>s+fineOpen(f),0);return `<div class="item"><div class="avatar">${esc(initials(m.name))}</div><div class="details"><strong>${esc(m.name)}</strong><small>${mf.length} Strafen</small></div><span class="number ${open?'':'muted'}">${money(open)}</span></div>`}).join('')}</div>`:empty('💶','Noch keine Mitglieder')}</div>
+ <section class="card"><h2>Einzelne Strafen</h2>${filteredFineListHTML(fines,true)}</section>${transferAccountHTML()}`;
 }
 function cashBalanceForm(){modal('Kontostand ändern',`<form data-form="cash-balance"><p class="hint">Der neue Betrag wird als Korrekturbuchung erfasst.</p><div class="field"><label>Neuer Kontostand (€)</label><input name="balance" inputmode="decimal" type="text" value="${euroInput(accountBalance())}" required></div><div class="field"><label>Notiz</label><input name="note" maxlength="180" placeholder="Optional"></div>${footer('Kontostand speichern')}</form>`);}
 function cashExpenseForm(){modal('Ausgabe buchen',`<form data-form="cash-expense"><div class="field"><label>Betrag (€)</label><input name="amount" inputmode="decimal" type="text" placeholder="z. B. 25,00" required></div><div class="field"><label>Verwendungszweck</label><input name="note" maxlength="180" placeholder="z. B. Stammtisch-Abend" required></div>${footer('Ausgabe buchen')}</form>`);}

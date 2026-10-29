@@ -22,7 +22,7 @@ ctx.testFD=fd;
 run(`queueSnapshot=()=>Promise.resolve();markCloudDirty=()=>{};queueSync=()=>{};
  data={members:[{id:'a',name:'Anna',active:true},{id:'b',name:'Berta',active:true}],meetings:[{id:'m1',date:'2020-01-01',time:'18:30',attendance:{a:{status:'present'}}}],excursions:[{id:'x1',title:'Hütte <Berg>',date:'2099-11-01',organizerIds:[]}],fines:[],payments:[]};page='meetings';render();`);
 assert.match(app.innerHTML,/class="reader-entry(?: past-entry)?" data-action="meeting-edit"/);
-assert.match(app.innerHTML,/1 Dabei/);
+assert.match(app.innerHTML,/👍 1/);
 run("meetingForm('m1')");assert.equal(dialog.open,false);
 assert.match(app.innerHTML,/id="admin-entry"/);assert.match(app.innerHTML,/data-form="meeting"/);
 assert.match(app.innerHTML,/meeting-delete/);assert.match(app.innerHTML,/data-action="attend"/);
@@ -38,7 +38,7 @@ ctx.mockRPC=async(name,args)=>{calls.push({name,args});return {error:null};};
 run(`cloudClient={rpc:mockRPC};reloadExcursionVotes=async()=>{excursionVotes=[{excursion_id:'x1',member_id:'a',status:'yes'}];render();};`);
 (async()=>{
  await run("adminExcursionVote('x1','a','yes')");
- assert.equal(calls[0].name,'fantastix_excursion_admin_vote');assert.match(counter.textContent,/1 dabei/);
+ assert.equal(calls[0].name,'fantastix_excursion_admin_vote');assert.match(counter.textContent,/👍 1/);
  assert.equal(voteButton.disabled,false);assert.ok(run('adminEntry!==null'));
  run('closeModal()');
  run("saveFine(testFD({memberId:'a',amount:'5',reason:'Zu spät',date:'1900-01-01'}))");
