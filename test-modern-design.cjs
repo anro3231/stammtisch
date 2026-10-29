@@ -26,6 +26,12 @@ for(const file of ['app.js','lesen.js']){
  assert.equal(env.doc.querySelectorAll('.next-card .dashboard-open').length,1);assert.equal(env.doc.querySelectorAll('.navinner svg').length,file==='app.js'?8:7);
  assert.ok(env.doc.querySelector(`link[href="./modern.css?v=${appVersion}"]`));assert.ok(fs.readFileSync(__dirname+'/'+(file==='app.js'?'index.html':'lesen.html'),'utf8').includes('./ui-icons.js?v='+appVersion));
  if(file==='lesen.js'){env.run("data.sections.excursions=false;renderApp()");assert.equal(env.doc.querySelector('.excursion-preview'),null);}
+ env.run("avatarUrls={a:'https://example.test/anna.jpg'};");
+ for(const selected of ['all','2026']){
+  env.run(file==='app.js'?`rankYear='${selected}'`:`year='${selected}'`);
+  const ranking=env.doc.createElement('div');ranking.innerHTML=env.run(file==='app.js'?'rankingHTML()':'ranking()');
+  const anna=[...ranking.querySelectorAll('.ranking-member')].find(row=>row.textContent.includes('Anna <A>'));assert.ok(anna);assert.equal(anna.querySelector('img').src,'https://example.test/anna.jpg');assert.ok(anna.querySelector('[data-profile-photo]'));assert.equal(ranking.querySelectorAll('.ranking-member').length,2);assert.equal(ranking.querySelectorAll('.ranking-member img').length,1,'Member without photo retains a placeholder');
+ }
  env.dom.window.close();
 }
 console.log('PASS modern design: shared assets, valid local icons, organizer names/free text/escaping, event sharing, event date/status, one primary action and all navigation targets.');

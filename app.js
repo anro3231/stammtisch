@@ -47,7 +47,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.23.8";
+const APP_VERSION = window.FX_VERSION || "3.23.9";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -427,7 +427,7 @@ function saveExcursion(fd){
  if(stored)Object.assign(stored,x);else data.excursions.push(x);
  closeModal();persist();
 }
-function rankingHTML(){const current=Number(yearOf(today()));const years=[...new Set([...Array.from({length:Math.max(1,current-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>yearOf(m.date))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();const isAll=rankYear==='all';const rows=rankRows(isAll?null:rankYear);return `${pageHead('','Ranglisten','')}<div class="card"><div class="ranking-filters" role="group" aria-label="Rangliste auswählen">${[['all','Ewige Rangliste'],...years.map(y=>[y,y])].map(([value,label])=>`<button type="button" class="ranking-filter ${rankYear===value?'is-active':''}" data-action="rank-year" data-year="${value}" aria-pressed="${rankYear===value}">${label}</button>`).join('')}</div>${rows.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${rows.map((m,i)=>`<tr><td><strong>${i<3?['🥇','🥈','🥉'][i]:i+1+'.'}</strong></td><td>${memberNo(m)!==null?`<span class="muted">Nr. ${memberNo(m)}</span> · `:''}${esc(m.name)}${m.active===false?' <span class="chip gray">Archiv</span>':''}</td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div>`:empty('🏆','Noch keine Mitglieder')}</div>`;}
+function rankingHTML(){const current=Number(yearOf(today()));const years=[...new Set([...Array.from({length:Math.max(1,current-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>yearOf(m.date))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();const isAll=rankYear==='all';const rows=rankRows(isAll?null:rankYear);return `${pageHead('','Ranglisten','')}<div class="card"><div class="ranking-filters" role="group" aria-label="Rangliste auswählen">${[['all','Ewige Rangliste'],...years.map(y=>[y,y])].map(([value,label])=>`<button type="button" class="ranking-filter ${rankYear===value?'is-active':''}" data-action="rank-year" data-year="${value}" aria-pressed="${rankYear===value}">${label}</button>`).join('')}</div>${rows.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${rows.map((m,i)=>`<tr><td><strong>${i<3?['🥇','🥈','🥉'][i]:i+1+'.'}</strong></td><td><div class="ranking-member">${memberAvatar(m.id,initials(m.name))}<span class="ranking-member-name">${memberNo(m)!==null?`<span class="muted">Nr. ${memberNo(m)}</span> · `:''}${esc(m.name)}${m.active===false?' <span class="chip gray">Archiv</span>':''}</span></div></td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div>`:empty('🏆','Noch keine Mitglieder')}</div>`;}
 function finesHTML(){
  const fines=[...data.fines].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
  const total=fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
