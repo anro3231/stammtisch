@@ -13,7 +13,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
  n=await push('event_new');await click(n);assert.equal(focused.at(-1),'reader');assert.equal(messages.at(-1).msg.tab,'excursions');assert.equal(messages.at(-1).msg.type,'fantastix-push-open');
  windows=[];n=await push('announcement');await click(n);assert.equal(new URL(opened.at(-1)).pathname,'/app/lesen.html');assert.equal(new URL(opened.at(-1)).searchParams.get('tab'),'dashboard');
  n=await push('meeting_new');assert.equal(n.options.data.tab,'meetings');
- for(const [kind,tab] of [['meeting_organizer','meetings'],['meeting_location','meetings'],['event_organizer','excursions']]){n=await push(kind);assert.equal(n.options.data.tab,tab);}
+ for(const [kind,tab] of [['meeting_organizer','meetings'],['meeting_location','meetings'],['event_organizer','excursions'],['fine_new','cash']]){n=await push(kind);assert.equal(n.options.data.tab,tab);if(kind==='fine_new'){await click(n);assert.equal(new URL(opened.at(-1)).searchParams.get('tab'),'cash');}}
  const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
  n=await push('birthday',`birthday:${p.year}-${p.month}-${p.day}:a`);assert.equal(n.options.data.tab,'members');await click(n);assert.equal(new URL(opened.at(-1)).searchParams.get('tab'),'members');
  const before=notifications.length;await push('birthday','birthday:2000-01-01:a');assert.equal(notifications.length,before,'Do not show a birthday after its local calendar day');

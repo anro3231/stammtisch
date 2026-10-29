@@ -1,4 +1,4 @@
-function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions','members'].includes(requested)?requested:'dashboard';}
+function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions','members','cash'].includes(requested)?requested:'dashboard';}
 const TRANSFER_ACCOUNT={name:'Dominik Winkler',iban:'DE64100110012624836316',display:'DE64 1001 1001 2624 8363 16'};
 function transferAccountHTML(){return `<section class="card transfer-account" aria-labelledby="transfer-heading"><h2 id="transfer-heading">Konto für Überweisungen</h2><p class="transfer-owner"><small>Kontoinhaber</small><strong>${esc(TRANSFER_ACCOUNT.name)}</strong></p><div class="transfer-copy-row"><div><small>IBAN</small><code class="transfer-iban">${esc(TRANSFER_ACCOUNT.display)}</code></div><button type="button" class="ghost" data-copy-iban data-action="copy-iban">IBAN kopieren</button></div><p class="transfer-copy-status" role="status" aria-live="polite"></p></section>`;}
 async function copyTransferIBAN(button){
@@ -772,7 +772,7 @@ $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
 document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;fineListLimit=10;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
-navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions','members'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
+navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions','members','cash'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh({background:true});});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh({background:true});},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();

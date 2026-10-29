@@ -56,6 +56,12 @@ Die Supabase-Migration **fantastix_organizer_location_birthday_push** ergänzt d
 
 Zusätzliche Clientprüfungen: `node test-organizer-editor.cjs` (mit `jsdom`) und `node test-admin-push-worker.cjs`. Datenbanktests mit synthetischen Konten prüfen insbesondere Empfängertrennung, Änderungen durch fremde Konten, Konflikte, mehrfache Zeitplanläufe und abgelaufene Geburtstagsereignisse.
 
+## Neue Strafen ab Version 3.24.1
+
+Neue Strafen lösen zusätzlich zur vorhandenen Glockenmeldung einen Push **nur an die Geräte des betroffenen Mitglieds** aus. Titel: „Neue Strafe“. Text: „Du hast eine neue Strafe erhalten. Grund: [Grund]. Betrag: [Betrag] €.“ Grund und Betrag werden beim Abruf der Warteschlange aus dem aktuellen Datenstand übernommen. Ein Klick öffnet die Kassa.
+
+Der Versand wartet auf die Leserfreigabe der Strafe. Andere Mitglieder und Admin-Konten ohne die betroffene Mitgliedszuordnung erhalten diesen Push nicht. Änderungen, Zahlungen und serverseitige Rücksicherungen lösen keine zusätzliche Meldung für dieselbe Strafen-ID aus. Gelöschte oder einem anderen Mitglied zugeordnete Strafen werden vor dem Versand ausgeschlossen. Die Supabase-Migration `fantastix_new_fine_member_push` verwendet den bestehenden Versandserver und ist in der Migrationshistorie dokumentiert.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.
