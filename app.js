@@ -29,7 +29,7 @@ function compactFineListHTML(items,admin=false){
 }
 function voteStatusSymbol(status){return {present:'👍',yes:'👍',absent:'👎',no:'👎',unsure:'❓'}[status]||'';}
 function voteStatusLabel(status){return {present:'Dabei',yes:'Dabei',absent:'Nicht dabei',no:'Nicht dabei',unsure:'Unsicher'}[status]||'Noch keine Antwort';}
-function voteStatusHTML(status){const symbol=voteStatusSymbol(status);return symbol?`<span role="img" aria-label="${voteStatusLabel(status)}">${symbol}</span>`:'';}
+function voteStatusHTML(status){const symbol=voteStatusSymbol(status);return symbol?`<span role="img" aria-label="${voteStatusLabel(status)}">${symbol}</span>`:'Noch offen';}
 function uiSymbol(name,fallback){return `<span class="ui-symbol" aria-hidden="true">${window.FantastixUI?.icon(name)||esc(fallback)}</span>`;}
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
@@ -47,7 +47,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.23.7";
+const APP_VERSION = window.FX_VERSION || "3.23.8";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -395,7 +395,7 @@ function updateExcursionVoteControls(id){
  const counter=dialog.querySelector('#excursion-vote-count');if(counter)counter.textContent=eventVoteSummary(id);
  for(const row of dialog.querySelectorAll('[data-excursion-row]')){
   const v=selected.find(r=>r.member_id===row.dataset.excursionRow),label=row.querySelector('.excursion-vote-label');
-  if(label){label.setAttribute('aria-label',voteStatusLabel(v?.status));label.textContent=voteStatusSymbol(v?.status)+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
+  if(label){label.setAttribute('aria-label',voteStatusLabel(v?.status));label.textContent=(voteStatusSymbol(v?.status)||'Noch offen')+(v?.admin_locked?' · Admin-Korrektur':'');let stamp=row.querySelector('.vote-stamp');if(v?.updated_at){if(!stamp){stamp=document.createElement('small');stamp.className='vote-stamp';label.parentElement.appendChild(stamp);}stamp.textContent='Abgestimmt: '+voteTime(v.updated_at);}else stamp?.remove();let note=row.querySelector('.vote-note');if(v?.status==='yes'&&v.note){if(!note){note=document.createElement('small');note.className='vote-note';label.parentElement.appendChild(note);}note.textContent='📝 '+v.note;label.parentElement.appendChild(note);}else note?.remove();}
   for(const button of row.querySelectorAll('[data-action="excursion-admin-vote"]')){
    const chosen=v?button.dataset.status===v.status:button.dataset.status==='clear';
    button.classList.toggle('is-selected',chosen);button.setAttribute('aria-pressed',String(chosen));

@@ -91,6 +91,3 @@ dialog.profile-photo-viewer{background:#111;color:#fff;width:min(92vw,760px);max
 
 /* Mehr: sämtliche Aktionen einschließlich Links und Import gleich breit. */
 .admin-more .stack>:is(button,a,label){display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;max-width:100%;min-width:0;min-height:46px;margin:0;text-align:center;white-space:normal;overflow-wrap:anywhere}
-
-/* Keine leeren Statuskacheln für noch unbeantwortete Abstimmungen. */
-.vote-status-empty{display:none!important}

@@ -29,7 +29,7 @@ function compactFineListHTML(items,admin=false){
 }
 function voteStatusSymbol(status){return {present:'👍',yes:'👍',absent:'👎',no:'👎',unsure:'❓'}[status]||'';}
 function voteStatusLabel(status){return {present:'Dabei',yes:'Dabei',absent:'Nicht dabei',no:'Nicht dabei',unsure:'Unsicher'}[status]||'Noch keine Antwort';}
-function voteStatusHTML(status){const symbol=voteStatusSymbol(status);return symbol?`<span role="img" aria-label="${voteStatusLabel(status)}">${symbol}</span>`:'';}
+function voteStatusHTML(status){const symbol=voteStatusSymbol(status);return symbol?`<span role="img" aria-label="${voteStatusLabel(status)}">${symbol}</span>`:'Noch offen';}
 function uiSymbol(name,fallback){return `<span class="ui-symbol" aria-hidden="true">${window.FantastixUI?.icon(name)||esc(fallback)}</span>`;}
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
@@ -118,7 +118,7 @@ function rsvpRoster(m){
  <div class="roster-list">${memberOrder().filter(p=>p.active!==false||effective(m,p.id)).map(p=>{
  const a=effective(m,p.id),note=['present','unsure'].includes(a?.status)?meetingNoteDisplay(m,p.id):'';
  return `<div class="roster-row"><div class="roster-name">${avatarFor(p.id)} <span class="roster-name-text">${esc(p.name)}${a?.status==='absent'&&section('absences')?`<small class="absence-reason">Grund: ${esc(a.reason||'Keine Angabe aus älterem Datenstand')}</small>`:''}</span></div>
- <div class="roster-right"><span class="chip ${!a?'gray vote-status-empty':a.status==='present'?'yes-chip':a.status==='unsure'?'gray':'no-chip'}">${voteStatusHTML(a?.status)}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
+ <div class="roster-right"><span class="chip ${!a?'gray':a.status==='present'?'yes-chip':a.status==='unsure'?'gray':'no-chip'}">${voteStatusHTML(a?.status)}</span>${a?.updatedAt?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(a.updatedAt))}</small>`:''}${note?`<small class="meeting-note-visible">📝 ${esc(note)}</small>`:''}</div></div>`;
  }).join('')}</div></div>`;
 }
 
@@ -128,7 +128,7 @@ function tripLastDate(x){return x.endDate||x.date||'';}
 function nextTrip(){return [...(data?.excursions||[])].filter(x=>!x.completed&&(!x.date||tripLastDate(x)>=today())).sort((a,b)=>Number(!a.date)-Number(!b.date)||String(a.date||'').localeCompare(String(b.date||''))||a.title.localeCompare(b.title,'de'))[0]||null;}
 function excursionOwn(x){return excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===profile?.member_id);}
 function excursionCount(id){const votes=excursionVotes.filter(v=>v.excursion_id===id);return {yes:votes.filter(v=>v.status==='yes').length,unsure:votes.filter(v=>v.status==='unsure').length,no:votes.filter(v=>v.status==='no').length,open:data.members.filter(m=>m.active!==false&&!votes.some(v=>v.member_id===m.id)).length};}
-function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${readerCountSummary(excursionCount(x.id))}</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':v?.status==='unsure'?'gray':'gray vote-status-empty'}">${voteStatusHTML(v?.status)}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
+function excursionRoster(x){return `<div class="attendee-block"><div class="roster-header"><strong>Rückmeldungen</strong><small>${readerCountSummary(excursionCount(x.id))}</small></div><div class="roster-list">${memberOrder().filter(m=>m.active!==false||excursionVotes.some(v=>v.excursion_id===x.id&&v.member_id===m.id)).map(m=>{const v=excursionVotes.find(v=>v.excursion_id===x.id&&v.member_id===m.id);return `<div class="roster-row"><span class="roster-name">${avatarFor(m.id)} <span class="roster-name-text">${esc(m.name)}</span></span><span class="chip ${v?.status==='yes'?'yes-chip':v?.status==='no'?'no-chip':v?.status==='unsure'?'gray':'gray'}">${voteStatusHTML(v?.status)}</span>${v?.updated_at?`<small class="vote-stamp">Abgestimmt: ${esc(voteTime(v.updated_at))}</small>`:''}${v?.admin_locked?'<small class="muted">Admin-Korrektur</small>':''}</div>`}).join('')}</div></div>`;}
 const stats=(id,y)=>data.meetings.filter(m=>m.date<=today()&&(!y||m.date.startsWith(y))&&effective(m,id)?.status==='present').length;
 const count=(m,y)=>y?stats(m.id,y)+(y==='2026'?n(m.historical2026Count):0):stats(m.id)+n(m.historicalCount);
 const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'de'));
@@ -208,7 +208,7 @@ function votePanel(m,compact=false){
  return `<div class="vote-panel ${compact?'compact':''}"><div class="vote-header"><strong>Deine Teilnahme</strong><span class="chip ${locked||closed?'gray':''}">${esc(summary)}</span></div>
  <div class="vote-actions">${[['present','👍','Dabei','yes'],['unsure','❓','Unsicher','unsure'],['absent','👎','Nicht dabei','no']].map(([value,emoji,label,tone])=>`<button type="button" class="vote-btn ${status===value?'selected '+tone:''}" data-vote="${value}" data-meeting-id="${esc(m.id)}" aria-label="${label}" title="${label}" aria-pressed="${status===value}" ${locked||closed||busy?'disabled':''}>${emoji}</button>`).join('')}</div>
  ${['present','unsure'].includes(status)&&!locked&&!closed?`<div class="meeting-note-editor"><label class="note-input-label" for="meeting-note-${esc(m.id)}">Notiz hinzufügen (optional)</label><div class="meeting-note-fields"><input id="meeting-note-${esc(m.id)}" class="meeting-note-input" data-meeting-note="${esc(m.id)}" maxlength="160" value="${esc(meetingNoteDisplay(m,profile.member_id))}" placeholder="z. B. Komme etwas später"><button type="button" class="smallbtn" data-save-meeting-note="${esc(m.id)}" ${busy?'disabled':''}>Speichern</button></div></div>`:''}
- ${status?`<small class="muted">${voteStatusHTML(status)}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch keine Antwort</small>'}</div>`;
+ ${status?`<small class="muted">${voteStatusHTML(status)}${status==='absent'&&section('absences')&&own.reason?' · '+esc(own.reason):''}</small>`:'<small class="muted">Noch offen</small>'}</div>`;
 }
 function coalesceSource(a){return a.source||'admin';}
 function readerEntryBack(label){return `<button type="button" class="smallbtn reader-entry-back" data-reader-back>← ${readerEntry?.from==='dashboard'?'Zum Dashboard':'Zurück zu '+label}</button>`;}
@@ -258,7 +258,7 @@ function excursionDetails(id){
  return `${readerEntryBack('Events')}${heading('Event')}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}
  ${sorted.length?sorted.map(x=>{const own=excursionOwn(x),completed=x.completed||(x.date&&tripLastDate(x)<today());return `<section class="card excursion-card"><div class="row"><h2>${esc(x.title)}</h2>${termStatusHTML(eventStatus(x))}</div>
  <p class="muted">${tripDateLabel(x)}</p>${x.location?`<p><strong>${esc(x.location)}</strong></p>`:''}${x.notes?`<p class="muted">${esc(x.notes)}</p>`:''}<p class="muted tiny">Organisatoren: ${esc(tripOrganizers(x))}</p>
- <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':own?.status==='unsure'?'gray':'gray vote-status-empty'}">${voteStatusHTML(own?.status)}</span></div>
+ <div class="vote-panel"><div class="vote-header"><strong>Meine Rückmeldung</strong><span class="chip ${own?.status==='yes'?'yes-chip':own?.status==='no'?'no-chip':own?.status==='unsure'?'gray':'gray'}">${voteStatusHTML(own?.status)}</span></div>
  <div class="vote-actions">${[['yes','👍','Dabei','yes'],['unsure','❓','Unsicher','unsure'],['no','👎','Nicht dabei','no']].map(([value,emoji,label,tone])=>`<button type="button" class="vote-btn ${own?.status===value?'selected '+tone:''}" data-excursion-vote="${value}" data-excursion-id="${esc(x.id)}" aria-label="${label}" title="${label}" aria-pressed="${own?.status===value}" ${completed||busy||!!excursionVoteError?'disabled':''}>${emoji}</button>`).join('')}</div>
  <small class="muted">${'Unverbindliche Planung · Keine Auswirkung auf die Rangliste oder Strafen'}</small></div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
