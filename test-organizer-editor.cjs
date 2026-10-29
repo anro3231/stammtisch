@@ -1,0 +1,20 @@
+// Real reader DOM and mocked RPCs only; no network or actual push.
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const {JSDOM}=require(process.env.FANTASTIX_JSDOM||'jsdom');
+(async()=>{
+ const dom=new JSDOM(fs.readFileSync(__dirname+'/lesen.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,''),{url:'https://example.test/app/',runScripts:'outside-only'}),w=dom.window,doc=w.document;
+ w.alerts=[];w.alert=x=>w.alerts.push(x);w.scrollTo=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ const source=fs.readFileSync(__dirname+'/lesen.js','utf8');w.eval(source.split("document.addEventListener('submit'")[0]+'\nwindow.run=code=>eval(code);');
+ const run=w.run;run("user={id:'reader'};profile={member_id:'a'};data={members:[{id:'a',name:'Anna'},{id:'b',name:'Berta'}],meetings:[{id:'m',date:'2099-01-01',time:'18:30',location:'Gasthaus <Alt>',organizerId:'a',attendance:{}}],excursions:[],fines:[],payments:[],sections:{members:true,meetings:true}};");
+ doc.querySelector('#content').innerHTML=run('meetingDetails("m")');let form=doc.querySelector('[data-organizer-meeting="m"]');assert.ok(form);assert.equal(form.querySelector('[name="location"]').value,'Gasthaus <Alt>');assert.equal(form.querySelector('option').value,'Gasthaus <Alt>');assert.equal(form.querySelectorAll('[name="organizerId"],[name="date"],[name="attendance"]').length,0,'Only time and location are editable');
+ run("data.meetings[0].organizerId='b'");assert.equal(run('organizerMeetingEditor(data.meetings[0])'),'');run("data.meetings[0].organizerId='a';data.meetings[0].date='2000-01-01'");assert.equal(run('organizerMeetingEditor(data.meetings[0])'),'');run("data.meetings[0].date='2099-01-01';data.members[0].active=false");assert.equal(run('organizerMeetingEditor(data.meetings[0])'),'');run('data.members[0].active=true');
+ w.sent=[];w.rpcError=null;let release;
+ w.mock={rpc:async(name,args)=>{w.sent.push({name,args});await new Promise(resolve=>release=resolve);return {error:w.rpcError};}};
+ run("cloud=window.mock;window.refreshed=0;refresh=async()=>{window.refreshed++;const latest=window.sent.at(-1).args;data.meetings[0].time=latest.p_time;data.meetings[0].location=latest.p_location;document.querySelector('#content').innerHTML=meetingDetails('m');};");
+ form.querySelector('[name="time"]').value='19:30';form.querySelector('[name="location"]').value='Neues Gasthaus';let saving=run('saveOrganizerMeeting')(form);assert.ok(form.querySelector('button').disabled);await run('saveOrganizerMeeting')(form);assert.equal(w.sent.length,1,'Duplicate submit ignored');release();await saving;
+ assert.equal(w.sent[0].name,'fantastix_organizer_update_meeting');assert.equal(w.sent[0].args.p_expected_time,'18:30');assert.equal(w.sent[0].args.p_expected_location,'Gasthaus <Alt>');assert.equal(run('data.meetings[0].time'),'19:30');assert.equal(w.refreshed,1);
+ form=doc.querySelector('[data-organizer-meeting]');w.rpcError={message:'Der Admin hat den Ort inzwischen geändert.'};form.querySelector('[name="location"]').value='Noch ein Ort';saving=run('saveOrganizerMeeting')(form);release();await saving;assert.equal(form.querySelector('[name="location"]').value,'Noch ein Ort');assert.match(form.querySelector('.organizer-save-status').textContent,/inzwischen/);assert.equal(run('data.meetings[0].location'),'Neues Gasthaus');assert.equal(form.querySelector('button').disabled,false);
+ const before=w.sent.length;form.querySelector('[name="location"]').value='x'.repeat(121);await run('saveOrganizerMeeting')(form);assert.equal(w.sent.length,before,'Too-long values are rejected before RPC');
+ run('data.sections.meetings=false');assert.equal(run('organizerMeetingEditor(data.meetings[0])'),'');dom.window.close();
+ console.log('PASS organizer editor: owner/upcoming/share gating, only time/location fields, escaped suggestions, RPC expectations, duplicate submit guard, successful refresh and retained draft after conflict.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

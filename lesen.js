@@ -1,4 +1,4 @@
-function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions'].includes(requested)?requested:'dashboard';}
+function initialPushTab(){if(typeof location==='undefined')return 'dashboard';const requested=new URL(location.href).searchParams.get('tab');return ['dashboard','meetings','calendar','excursions','members'].includes(requested)?requested:'dashboard';}
 const TRANSFER_ACCOUNT={name:'Dominik Winkler',iban:'DE64100110012624836316',display:'DE64 1001 1001 2624 8363 16'};
 function transferAccountHTML(){return `<section class="card transfer-account" aria-labelledby="transfer-heading"><h2 id="transfer-heading">Konto für Überweisungen</h2><p class="transfer-owner"><small>Kontoinhaber</small><strong>${esc(TRANSFER_ACCOUNT.name)}</strong></p><div class="transfer-copy-row"><div><small>IBAN</small><code class="transfer-iban">${esc(TRANSFER_ACCOUNT.display)}</code></div><button type="button" class="ghost" data-copy-iban data-action="copy-iban">IBAN kopieren</button></div><p class="transfer-copy-status" role="status" aria-live="polite"></p></section>`;}
 async function copyTransferIBAN(button){
@@ -237,6 +237,28 @@ function openReaderEntry(kind,id){
  document.querySelector('#content .title')?.setAttribute('tabindex','-1');
  document.querySelector('#content .title')?.focus();
 }
+function canEditOrganizedMeeting(m){return !!(user&&profile?.member_id&&section('meetings')&&m.organizerId===profile.member_id&&m.date>=today()&&member(profile.member_id)?.active!==false);}
+function organizerMeetingEditor(m){
+ if(!canEditOrganizedMeeting(m))return '';
+ const places=[...new Set(data.meetings.map(x=>String(x.location||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de'));
+ return `<details class="organizer-edit"><summary>Als Organisator: Uhrzeit & Gasthaus ändern</summary><form data-organizer-meeting="${esc(m.id)}"><input type="hidden" name="expectedTime" value="${esc(m.time||'18:30')}"><input type="hidden" name="expectedLocation" value="${esc(m.location||'')}"><div class="field"><label for="organizer-time-${esc(m.id)}">Uhrzeit</label><input id="organizer-time-${esc(m.id)}" type="time" name="time" value="${esc(m.time||'18:30')}" required></div><div class="field"><label for="organizer-place-${esc(m.id)}">Ort / Gasthaus</label><input id="organizer-place-${esc(m.id)}" name="location" list="organizer-places" maxlength="120" value="${esc(m.location||'')}" placeholder="Gasthaus auswählen oder eingeben"><datalist id="organizer-places">${places.map(place=>`<option value="${esc(place)}"></option>`).join('')}</datalist></div><p class="hint">Änderungen am Gasthaus werden per Push an die Mitglieder angekündigt.</p><button type="submit" class="ghost">Uhrzeit & Gasthaus speichern</button><p class="organizer-save-status hint" role="status" aria-live="polite"></p></form></details>`;
+}
+async function saveOrganizerMeeting(form){
+ if(busy||!cloud||!user||form.dataset.saving==='true')return;
+ const id=form.dataset.organizerMeeting,m=data?.meetings.find(x=>x.id===id);
+ if(!m||!canEditOrganizedMeeting(m))return alert('Nur der aktuelle Organisator kann diesen Stammtisch bearbeiten.');
+ const fd=new FormData(form),time=String(fd.get('time')||''),location=String(fd.get('location')||'').trim();
+ if(!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)||location.length>120)return alert('Bitte gültige Uhrzeit und Gasthaus eingeben.');
+ const button=form.querySelector('button[type="submit"]'),status=form.querySelector('.organizer-save-status');form.dataset.saving='true';if(button)button.disabled=true;
+ try{
+  const {error}=await cloud.rpc('fantastix_organizer_update_meeting',{p_meeting_id:id,p_time:time,p_location:location,p_expected_time:String(fd.get('expectedTime')||''),p_expected_location:String(fd.get('expectedLocation')||'')});
+  if(error)throw error;
+  await refresh();
+  if(data){const current=data.meetings.find(x=>x.id===id);if(!current||current.time!==time||String(current.location||'')!==location)throw Error('Bitte die aktuelle Ansicht neu laden und den gespeicherten Stand prüfen.');}
+  const panel=document.querySelector('[data-organizer-meeting]');const message=panel?.querySelector('.organizer-save-status');if(message)message.textContent='Uhrzeit und Gasthaus gespeichert.';
+ }catch(e){if(status?.isConnected)status.textContent='Nicht gespeichert: '+(e.message||String(e));else alert('Änderung konnte nicht bestätigt werden: '+(e.message||String(e)));}
+ finally{delete form.dataset.saving;if(button?.isConnected)button.disabled=false;}
+}
 function meetingDetails(id){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  const items=data.meetings.filter(m=>m.id===id);
@@ -244,6 +266,7 @@ function meetingDetails(id){
  <div class="row"><h2>${dateLabel(m.date)}</h2>${termStatusHTML(m.date===today()?'Heute':m.date>today()?'Geplant':'Vergangen')}</div>
  <p>${esc(m.location||'Gasthaus offen')} · ${esc(timeLabel(m.time))} Uhr</p>
  ${section('members')?`<p class="muted tiny">Organisator: ${esc(memberName(m.organizerId))}</p>`:''}
+ ${organizerMeetingEditor(m)}
  ${votePanel(m)}
  ${rsvpRoster(m)}
  
@@ -294,7 +317,7 @@ function readerBellIcon(){return window.FantastixUI?.icon('bell')||'🔔';}
 function readerBell(){const unread=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;return `<button type="button" id="reader-bell" class="reader-bell" aria-label="Benachrichtigungen">${readerBellIcon()} ${unread?`<b>${unread}</b>`:''}</button>`;}
 function readerInbox(){
  function noticeText(x){
-  const labels={vote:'Abstimmung',organizer_vote:'Abstimmung zu deinem Termin',organizer_assignment:'Organisator-Zuweisung',fine:'Strafe',paid:'Bezahlte Strafe',vote_reminder:'Abstimmungserinnerung',created:'Neuer Termin',schedule:'Terminänderung',location:'Ortsänderung',deleted:'Termin entfernt',announcement:'Nachricht'};
+  const labels={birthday:'Geburtstag',vote:'Abstimmung',organizer_vote:'Abstimmung zu deinem Termin',organizer_assignment:'Organisator-Zuweisung',fine:'Strafe',paid:'Bezahlte Strafe',vote_reminder:'Abstimmungserinnerung',created:'Neuer Termin',schedule:'Terminänderung',location:'Ortsänderung',deleted:'Termin entfernt',announcement:'Nachricht'};
   const label=labels[x.kind]||'Hinweis',body=String(x.body||'').trim(),title=String(x.title||'Benachrichtigung');
   if(!body)return {label,body:'Du hast eine neue Benachrichtigung erhalten.'};
   if(/[.!?]$/.test(body))return {label,body};
@@ -696,6 +719,7 @@ function askAbsenceReason(meetingId){
  dlg.showModal();
 }
 document.addEventListener('submit',e=>{
+ if(e.target.matches('form[data-organizer-meeting]')){e.preventDefault();saveOrganizerMeeting(e.target);return;}
  if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
  if(e.target.id==='member-notice-form'){e.preventDefault();sendMemberNotice(e.target);}
@@ -748,7 +772,7 @@ $('#absence-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#push-opt-in-dialog').addEventListener('close',()=>{showNextNotice();});
 $('#member-notice-dialog').addEventListener('close',()=>{showNextNotice();});
 document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fineMemberFilter=e.target.value;fineListLimit=10;renderApp();return;}if(e.target.matches('.photo-upload-input')&&e.target.files?.[0]){uploadMyPhoto(e.target.files[0]);e.target.value='';}});
-navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
+navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions','members'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh({background:true});});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh({background:true});},60000);
 (async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();

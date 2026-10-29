@@ -96,3 +96,11 @@ dialog.profile-photo-viewer{background:#111;color:#fff;width:min(92vw,760px);max
 .ranking-member{display:flex;align-items:center;gap:9px;min-width:0}
 .ranking-member-name{min-width:0;overflow-wrap:anywhere}
 .ranking-member>.avatar,.ranking-member>.member-photo{width:32px;height:32px;min-width:32px;flex:0 0 32px;border-radius:50%;object-fit:cover;margin:0;font-size:12px}
+
+/* Lesemodus: begrenzte Terminbearbeitung durch den Organisator. */
+.organizer-edit{border:1px solid var(--border);border-radius:12px;padding:12px;margin:14px 0;background:#fafbfc}
+.organizer-edit summary{cursor:pointer;font-size:13px;font-weight:650;color:var(--accent)}
+.organizer-edit .field{min-width:0}.organizer-edit :is(input:not([type="hidden"]),button){width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+.organizer-edit input[type="time"]{inline-size:100%;min-inline-size:0;max-inline-size:100%;-webkit-appearance:none;appearance:none;font-size:16px}
+.organizer-edit input[type="time"]::-webkit-date-and-time-value{text-align:left;min-width:0}
+.organizer-save-status:empty{display:none}

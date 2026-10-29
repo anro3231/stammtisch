@@ -44,6 +44,18 @@ Die Summen für Stammtische und Events fassen „Unsicher“ und unbeantwortete 
 
 Dashboard und Terminansichten zeigen 👍 Zusagen, 👎 Absagen und ❓ tatsächlich unsichere Stimmen ausschließlich als Emoji mit Anzahl. Unbeantwortete Stimmen werden in diesen Summen nicht mehr angezeigt. Einzelne Abstimmungsstatus verwenden ebenfalls nur die Emojis; verständliche Bezeichnungen für Screenreader bleiben erhalten. Die Strafenübersicht im Adminmodus zeigt wie der Lesemodus zuerst die offenen Beträge pro Mitglied und danach die einzelnen Strafen mit Filter und „Mehr laden“.
 
+## Organisatoren und zusätzliche Pushs ab Version 3.24.0
+
+- Neue Organisator-Zuweisungen für Stammtische und Events lösen einen gezielten Push ausschließlich an die Geräte des betroffenen Mitglieds aus. Es werden keine historischen Zuweisungen nachträglich angekündigt.
+- Ändert sich das Gasthaus eines noch nicht vergangenen Stammtischs, erhalten berechtigte Mitglieder mit aktivierten Mitteilungen einen Push. Vor dem Versand inzwischen überholte Änderungen werden verworfen. Beim erstmaligen Anlegen kommt weiterhin die normale Terminankündigung.
+- Der aktuelle Organisator kann im Lesemodus seinen Stammtisch öffnen und unter **Als Organisator: Uhrzeit & Gasthaus ändern** diese beiden Felder speichern. Die serverseitige Prüfung beschränkt Änderungen auf die eigene aktuelle Zuweisung, sichtbare und noch nicht vergangene Stammtische. Zwischenzeitliche Änderungen an Uhrzeit oder Ort werden als Konflikt gemeldet; andere Änderungen wie Stimmen bleiben erhalten. Eine reine Uhrzeitänderung erzeugt keinen zusätzlichen Gasthaus-Push.
+- Geburtstage aktiver, für Leser sichtbarer Mitglieder werden ab **09:00 Uhr Europe/Vienna** einmal pro Person und Datum angekündigt. Der Zeitplan prüft alle 15 Minuten; normalerweise wird der Eintrag um 09:00 erzeugt und beim nächsten regulären Push-Lauf versendet. Sommer-/Winterzeit werden berücksichtigt. Eine Glockenmeldung erscheint ebenfalls; der Service Worker zeigt verspätete Geburtstags-Pushs nach Tagesende nicht mehr an.
+- Der bestehende Versandserver verarbeitet diese Pushs weiterhin alle zwei Minuten. Empfang setzt ein freigeschaltetes aktives Konto bzw. Admin-Konto sowie ein registriertes Gerät mit Mitteilungsfreigabe voraus. Organisator-Pushs benötigen zusätzlich die passende Mitgliedszuordnung.
+
+Die Supabase-Migration **fantastix_organizer_location_birthday_push** ergänzt die Auslöser, Empfängerprüfung, Geburtstagsterminplanung und das geschützte Organisator-RPC. Sie ist in der Supabase-Migrationshistorie dokumentiert; eine SQL-Datei wird nicht im Repository abgelegt. Der bestehende Push-Server und seine Geheimnisse werden weiterverwendet.
+
+Zusätzliche Clientprüfungen: `node test-organizer-editor.cjs` (mit `jsdom`) und `node test-admin-push-worker.cjs`. Datenbanktests mit synthetischen Konten prüfen insbesondere Empfängertrennung, Änderungen durch fremde Konten, Konflikte, mehrfache Zeitplanläufe und abgelaufene Geburtstagsereignisse.
+
 ## Datenbank und Benachrichtigungen
 
 Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in Supabase eingerichtete Tabellen und Funktionen bleiben davon unberührt; die Website benötigt diese Dateien nicht zur Laufzeit. Frühere SQL-Dateien sind über die Git-Historie abrufbar. Das Repository enthält damit kein vollständiges Paket zum Neuaufsetzen der Datenbank oder des serverseitigen Push-Versands. Ältere SQL-Dateien nicht pauschal erneut ausführen: Sie können neuere Funktionen überschreiben.

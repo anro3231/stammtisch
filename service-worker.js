@@ -1,4 +1,4 @@
-const CACHE='fantastix-v3.23.9';
+const CACHE='fantastix-v3.24.0';
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
 function fxSetIconBadge(unread){
@@ -9,7 +9,7 @@ function fxSetIconBadge(unread){
   else if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(0);
  }).catch(()=>{});return fxBadgeQueue;
 }
-const FILES=['./','./modern.css?v=3.23.9','./ui-icons.js?v=3.23.9','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
+const FILES=['./','./modern.css?v=3.24.0','./ui-icons.js?v=3.24.0','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung
  // verhindern und PushManager.subscribe() mit "requires an active service worker" abbrechen.
@@ -37,14 +37,18 @@ self.addEventListener('fetch',e=>{
 // Echte Web Push Nachricht - auch bei geschlossener FantastiX Web-App.
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch{payload={};}
- const kind=['meeting_new','announcement','vote_reminder','event_new','admin_test'].includes(payload.kind)?payload.kind:'announcement';
+ const kind=['meeting_new','announcement','vote_reminder','event_new','admin_test','meeting_organizer','event_organizer','meeting_location','birthday'].includes(payload.kind)?payload.kind:'announcement';
+ if(kind==='birthday'){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Vienna',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+  if(String(payload.tag||'').split(':')[1]!==`${parts.year}-${parts.month}-${parts.day}`)return;
+ }
  if(kind==='vote_reminder'&&Number.isFinite(Date.parse(payload.deadlineAt))&&Date.now()>=Date.parse(payload.deadlineAt))return;
  const title=String(payload.title||'FantastiX').slice(0,100);
  const body=String(payload.body||'Neue Nachricht').slice(0,220);
  event.waitUntil(Promise.all([kind==='admin_test'?Promise.resolve():fxSetIconBadge(true),self.registration.showNotification(title,{
   body, icon:'./icons/icon-192.png',badge:'./icons/icon-192.png',
   tag:String(payload.tag||('fantastix-'+kind)).slice(0,140),
-  data:{audience:kind==='admin_test'?'admin':'reader',tab:kind==='admin_test'?'settings':kind==='event_new'?'excursions':kind==='announcement'?'dashboard':'meetings'},
+  data:{audience:kind==='admin_test'?'admin':'reader',tab:kind==='admin_test'?'settings':['event_new','event_organizer'].includes(kind)?'excursions':kind==='birthday'?'members':kind==='announcement'?'dashboard':'meetings'},
   renotify:false
  })]));
 });
@@ -53,7 +57,7 @@ self.addEventListener('notificationclick',event=>{
  event.waitUntil((async()=>{
   const admin=event.notification.data?.audience==='admin';
   const targetURL=new URL(admin?'./index.html':'./lesen.html',self.registration.scope);
-  const tab=['dashboard','meetings','calendar','excursions'].includes(event.notification.data?.tab)?event.notification.data.tab:'dashboard';
+  const tab=['dashboard','meetings','calendar','excursions','members'].includes(event.notification.data?.tab)?event.notification.data.tab:'dashboard';
   if(admin)targetURL.searchParams.set('push','test');else targetURL.searchParams.set('tab',tab);
   const target=targetURL.href;
   const windows=await clients.matchAll({type:'window',includeUncontrolled:true});
