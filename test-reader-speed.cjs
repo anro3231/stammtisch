@@ -17,7 +17,7 @@ function environment(){
  return {dom,w,run:w.run,doc:w.document,pending,resolve(key,value={data:[],error:null}){assert.ok(pending.get(key)?.length,'Pending '+key);pending.get(key).shift().resolve(value);},reject(key,error){pending.get(key).shift().reject(error);}};
 }
 async function core(env){env.resolve('reader_profiles',{data:{member_id:'a'}});env.resolve('public',{data:{content:structuredClone(env.w.fixture),published_at:'2026-10-28T12:00:00Z'}});env.resolve('fantastix_reader_deadlines',{data:[{meeting_id:'m',deadline_at:'2098-12-31T00:00:00Z'}]});await tick();}
-async function optional(env){for(const key of ['fantastix_excursion_votes_read_v2','meeting_notes','birthdays','avatars','fantastix_notice_list','extras'])env.resolve(key);await tick();}
+async function optional(env){for(const key of ['fantastix_excursion_votes_read_v2','meeting_notes','birthdays','avatars','fantastix_notice_list','fantastix_member_event','extras'])env.resolve(key);await tick();}
 (async()=>{
  const env=environment(),{w,doc,run}=env;
  // A menu must render synchronously before any response arrives.
