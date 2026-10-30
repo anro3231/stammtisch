@@ -47,7 +47,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "3.25.0";
+const APP_VERSION = window.FX_VERSION || "3.25.1";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -306,8 +306,8 @@ function homeHTML(){
   <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2>${next?termStatusHTML(days===0?'Heute':'Geplant'):'<span class="chip gray">Nicht geplant</span>'}</div>
    ${next?`<strong class="next-date">${fmtDate(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(next.time||'18:30')} Uhr</p>${voteCountdownHTML(meetingVoteDeadline(next))}${dashboardAttendanceHTML(next)}<p class="muted tiny">${organizer?'Organisator: '+esc(organizer.name):''}</p><button class="button dashboard-open" data-action="meeting-edit" data-id="${next.id}">Stammtisch öffnen</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}
   </section>
-  <section class="card"><h2>Letzte 3 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
  ${window.FantastiXPhotos?.card()||''}
+  <section class="card"><h2>Letzte 3 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
   <section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2>${nextExcursion()?termStatusHTML(eventStatus(nextExcursion())):'<span class="chip gray">Nicht geplant</span>'}</div>
    ${nextExcursion()?`<strong class="excursion-title">${esc(nextExcursion().title)}</strong><p class="event-date">${excursionPeriod(nextExcursion())}</p><p class="event-organizer">Organisatoren: ${esc(excursionOrganizers(nextExcursion()))}</p><button class="ghost" data-page="excursions">Events ansehen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new">+ Event planen</button>`}
   </section>${strongestStreakHTML()}`;
