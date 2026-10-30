@@ -135,6 +135,7 @@ const ranks=y=>[...data.members].map(m=>({...m,count:count(m,y)})).sort((a,b)=>b
 function leaders(y){const rows=ranks(y);return rows.length&&rows[0].count>0?rows.filter(m=>m.count===rows[0].count):[];}
 function daysUntil(s){const parts=s?.split('-').map(Number),t=today().split('-').map(Number);if(!parts||parts.length!==3)return null;return Math.max(0,Math.round((Date.UTC(parts[0],parts[1]-1,parts[2])-Date.UTC(t[0],t[1]-1,t[2]))/86400000));}
 function renderGate(msg=''){
+ window.FantastiXPhotos?.reset();
  $('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#tabs').innerHTML='';
  if(!user){
   const signingUp=authMode==='signup';
@@ -162,6 +163,8 @@ function renderApp(){
  $('#content').innerHTML=(readerInboxOpen?readerInbox():'')+({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash}[tab])();
  const bell=$('#reader-bell');if(bell){const count=readerUpdates.filter(x=>!readerUpdateReads.has(x.id)).length;bell.innerHTML=readerBellIcon()+(count?`<b>${count}</b>`:'');}
  $('#updated').textContent='Stand: '+dateTime(lastFetched||data.publishedAt);
+ window.FantastiXPhotos?.configure({context:()=>({client:cloud,user,admin:false})});
+ window.FantastiXPhotos?.hydrate();
  showPushOptIn();
 }
 function voteTimeRemaining(deadline,now=Date.now()){
@@ -195,6 +198,7 @@ function dashboard(){
  <section class="card next-card"><div class="row"><h2>Nächster Stammtisch</h2>${next?termStatusHTML(days===0?'Heute':'Geplant'):'<span class="chip gray">Nicht geplant</span>'}</div>
  ${next?`<strong class="next-date">${dateLabel(next.date)}</strong><p class="next-place">${esc(next.location||'Gasthaus noch offen')} · ${esc(timeLabel(next.time))} Uhr</p>${voteCountdownHTML(deadlines.has(next.id)?new Date(deadlines.get(next.id)).getTime():null)}<p class="muted tiny">Organisator: ${esc(memberName(next.organizerId))}</p>${section('members')?`${dashboardAttendanceHTML(next)}`:``}<button type="button" class="button dashboard-open" data-reader-meeting="${esc(next.id)}">Stammtisch öffnen →</button>`:'<p class="muted">Noch kein nächster Stammtisch eingetragen.</p>'}</section>
  <section class="card"><h2>Letzte 3 Stammtische</h2>${completed.slice(0,3).length?completed.slice(0,3).map(m=>`<div class="item"><div class="avatar">${esc(m.date.slice(-2))}</div><div class="details"><strong>${dateLabel(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(p=>effective(m,p.id)?.status==='present').length} anwesend</small></div></div>`).join(''):'<p class="muted">Noch keine Stammtische.</p>'}</section>
+ ${window.FantastiXPhotos?.card()||''}
  ${section('excursions')?`<section class="card excursion-preview"><div class="row"><h2>Nächster Event</h2>${nextTrip()?termStatusHTML(eventStatus(nextTrip())):'<span class="chip gray">Nicht geplant</span>'}</div>${nextTrip()?`<strong class="excursion-title">${esc(nextTrip().title)}</strong><p class="event-date">${tripDateLabel(nextTrip())}</p><p class="event-organizer">Organisatoren: ${esc(tripOrganizers(nextTrip()))}</p><button class="ghost" data-reader-excursion="${esc(nextTrip().id)}" type="button">Öffnen →</button>`:'<p class="muted">Noch kein Event geplant.</p>'}</section>`:''}
  ${strongestStreakHTML()}${pushPromptHTML()}`;
 }
@@ -664,7 +668,7 @@ async function changePassword(form){
  if(error)return alert('Passwort konnte nicht geändert werden: '+error.message);
  form.reset();alert('Passwort geändert.');
 }
-async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;readerRefreshInFlight=null;readerLastSyncUser=null;readerPushCheckedUser=null;await cloud.auth.signOut();user=null;fxSetIconBadge(false);profile=null;data=null;meetingNotes=[];excursionVotes=[];excursionVoteError='';readerUpdates=[];readerUpdateReads=new Set();readerPresence={};notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
+async function logout(){if(!cloud)return;try{if(pushSupported()){const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await cloud.rpc('fantastix_push_unsubscribe',{p_endpoint:sub.endpoint});await unregisterReminderSubscription(sub);await sub.unsubscribe();}}}catch(e){console.warn('Push-Abmeldung:',e);}pushEnabled=false;readerRefreshInFlight=null;readerLastSyncUser=null;readerPushCheckedUser=null;await cloud.auth.signOut();window.FantastiXPhotos?.reset();user=null;fxSetIconBadge(false);profile=null;data=null;meetingNotes=[];excursionVotes=[];excursionVoteError='';readerUpdates=[];readerUpdateReads=new Set();readerPresence={};notices=[];noticeQueue=[];noticeAcknowledging=false;if($('#notice-dialog')?.open)$('#notice-dialog').close();if($('#push-opt-in-dialog')?.open)$('#push-opt-in-dialog').close();avatarUrls={};birthdays=[];avatarLoadedAt=0;deadlines.clear();readerEntry=null;tab='dashboard';authMode='login';renderGate();}
 async function castVote(meetingId,status,reason=''){
  if(busy||!data||!profile?.member_id)return;
  const m=data.meetings.find(x=>x.id===meetingId);if(!m)return;
