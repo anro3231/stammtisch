@@ -1,4 +1,4 @@
-const CACHE='fantastix-v3.26.1';
+const CACHE='fantastix-v3.26.2';
 // App-Icon: bewusst nur 1 für ungelesen; ohne API bleibt die App unverändert nutzbar.
 let fxBadgeQueue=Promise.resolve();
 function fxSetIconBadge(unread){
@@ -9,7 +9,7 @@ function fxSetIconBadge(unread){
   else if(typeof navigator.setAppBadge==='function')await navigator.setAppBadge(0);
  }).catch(()=>{});return fxBadgeQueue;
 }
-const FILES=['./','./photo-feature.js?v=3.26.1','./modern.css?v=3.26.1','./ui-icons.js?v=3.26.1','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
+const FILES=['./','./photo-feature.js?v=3.26.2','./modern.css?v=3.26.2','./ui-icons.js?v=3.26.2','./index.html','./version.js','./app.js','./lesen.html','./lesen.js','./calendar-view.js','./push-config.js','./manifest.webmanifest','./leser-manifest.webmanifest','./fantastix-logo.png','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-180.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  // Kein caches.addAll(): eine einzige fehlende Datei würde die komplette SW-Aktivierung
  // verhindern und PushManager.subscribe() mit "requires an active service worker" abbrechen.
