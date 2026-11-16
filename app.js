@@ -889,6 +889,7 @@ async function snapshotRestore(id){try{await snapshotWriteQueue;const versions=a
 const CLOUD_REV_KEY = 'fantastix.cloud.v35.revision';
 const CLOUD_CONTEXT_KEY = 'fantastix.cloud.v35.context';
 const CLOUD_DIRTY_KEY = 'fantastix.cloud.v35.dirty';
+const CLOUD_BASELINE_MODIFIED_KEY = 'fantastix.cloud.v35.baseline-modified-at';
 const PUBLIC_SETTINGS_KEY = 'fantastix.public.v35.settings';
 let cloudRevision = null, cloudReady = false, cloudDirty = localStorage.getItem(CLOUD_DIRTY_KEY) === '1';
 let cloudSaving = false, pendingRemote = null, publishing = false, publicPublished = false;
@@ -907,7 +908,9 @@ const savePublicSettings = opts => localStorage.setItem(PUBLIC_SETTINGS_KEY,JSON
 const activeCloudContext=()=>cloudUser&&getCloudConfig()?getCloudConfig().url+'|'+cloudUser.id:'';
 const hasData = d => !!(d.members?.length||d.meetings?.length||d.excursions?.length||d.fines?.length||d.payments?.length||d.cashbook?.transactions?.length||d.cashbook?.openingBalanceCents);
 function markCloudDirty(){cloudDirty=true;localStorage.setItem(CLOUD_DIRTY_KEY,'1');}
-function markCloudClean(revision){cloudDirty=false;cloudRevision=revision;localStorage.setItem(CLOUD_DIRTY_KEY,'0');localStorage.setItem(CLOUD_REV_KEY,String(revision));localStorage.setItem(CLOUD_CONTEXT_KEY,activeCloudContext());}
+function markCloudClean(revision){cloudDirty=false;cloudRevision=revision;localStorage.setItem(CLOUD_DIRTY_KEY,'0');localStorage.setItem(CLOUD_REV_KEY,String(revision));localStorage.setItem(CLOUD_CONTEXT_KEY,activeCloudContext());localStorage.setItem(CLOUD_BASELINE_MODIFIED_KEY,String(data.modifiedAt||''));}
+function hasUnpublishedLocalChanges(){const baseline=localStorage.getItem(CLOUD_BASELINE_MODIFIED_KEY);return baseline===null?cloudDirty:String(data.modifiedAt||'')!==baseline;}
+function canAdoptRemoteWithoutConflict(){return !cloudDirty||!hasUnpublishedLocalChanges();}
 function cloudForm(){
  const cfg=getCloudConfig();
  if(!cfg)return modal('Cloud einrichten',`<div class="notice warning">Trage deine Supabase-Projekt-URL und deinen Publishable Key in <strong>cloud-config.js</strong> ein und lade die Datei auf GitHub Pages hoch. Hinweise zur Einrichtung stehen in README.md.</div><button class="ghost" data-action="close">Schließen</button>`);
@@ -989,8 +992,11 @@ async function syncCloud(silent=false){
   if(!cloudReady){
    if(previous!==null && Number(previous)===Number(remote.revision)){
     cloudRevision=remote.revision;cloudReady=true;cloudStatus='connected';syncMessage='Cloud verbunden';
-    if(cloudDirty)queueSync();
+    if(cloudDirty&&!hasUnpublishedLocalChanges())markCloudClean(remote.revision);
+    else if(cloudDirty)queueSync();
    } else if(!hasData(data)){
+    adoptCloud(remote);
+   } else if(previous!==null && canAdoptRemoteWithoutConflict()){
     adoptCloud(remote);
    } else if(!hasData(remote.content) && !cloudDirty && previous!==null){
     cloudChooseModal(remote,'Die Cloud ist leer. Soll dein lokaler Datenstand hochgeladen werden?');
@@ -998,7 +1004,7 @@ async function syncCloud(silent=false){
     cloudChooseModal(remote,'Es liegen lokale Daten und ein Cloud-Datenbestand vor. Bitte wähle bewusst einen Stand aus.');
    }
   }else if(Number(remote.revision)!==Number(cloudRevision)){
-   if(cloudDirty)cloudChooseModal(remote,'Die Cloud wurde anderswo geändert und lokal liegen weitere Änderungen vor.');
+   if(!canAdoptRemoteWithoutConflict())cloudChooseModal(remote,'Die Cloud wurde anderswo geändert und lokal liegen eigene, noch nicht synchronisierte Änderungen vor.');
    else adoptCloud(remote);
   }else if(cloudDirty){queueSync();}
   else{cloudStatus='connected';syncMessage='Synchronisiert';}
