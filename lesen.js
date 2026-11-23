@@ -367,10 +367,16 @@ function excursionDetails(id){
  <div class="vote-actions">${[['yes','Dabei','yes'],['unsure','Unsicher','unsure'],['no','Nicht dabei','no']].map(([value,label,tone])=>`<button type="button" class="vote-btn ${own?.status===value?'selected '+tone:''}" data-excursion-vote="${value}" data-excursion-id="${esc(x.id)}" aria-label="${label}" title="${label}" aria-pressed="${own?.status===value}" ${completed||busy||!!excursionVoteError?'disabled':''}>${voteChoiceContent(value,label)}</button>`).join('')}</div><p class="vote-feedback" role="status" aria-live="polite"></p>
  ${!own?.status?'<small class="muted">Noch offen</small>':''}</div>${excursionRoster(x)}</section>`}).join(''):empty('Noch keine Events eingetragen.')}`;
 }
+function readerAnnualWinnersHTML(){
+ const winners=[...(data.annualWinners||[])].sort((a,b)=>a.year-b.year);
+ const symbols={2021:'🏆',2022:'🥇',2023:'🥈',2024:'🥉',2025:'🏅'};
+ return winners.length?`<div class="list">${winners.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">${symbols[w.year]||'🏆'}</span><div class="details"><strong>${w.year}</strong><small>${w.memberIds.map(id=>esc(data.members.find(m=>m.id===id)?.name||'Unbekanntes Mitglied')).join(' & ')}</small></div></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';
+}
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
  const nowYear=Number(currentYear());const years=[...new Set([...Array.from({length:Math.max(1,nowYear-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>m.date.slice(0,4))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();
- return `${heading('Ranglisten')}<div class="card"><div class="ranking-filters" role="group" aria-label="Rangliste auswählen">${[['all','Ewige Rangliste'],...years.map(y=>[y,y])].map(([value,label])=>`<button type="button" class="ranking-filter ${year===value?'is-active':''}" data-year="${value}" aria-pressed="${year===value}">${label}</button>`).join('')}</div><div class="separator"></div><div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td><div class="ranking-member">${avatarFor(m.id)}<span class="ranking-member-name">${esc(m.name)}</span></div></td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div></div>`;
+ const isWinners=year==='winners';
+ return `${heading('Ranglisten')}<div class="card"><div class="ranking-filters" role="group" aria-label="Rangliste auswählen">${[['all','Ewige Rangliste'],['winners','Jahres-Sieger'],...years.map(y=>[y,y])].map(([value,label])=>`<button type="button" class="ranking-filter ${year===value?'is-active':''}" data-year="${value}" aria-pressed="${year===value}">${label}</button>`).join('')}</div><div class="separator"></div>${isWinners?readerAnnualWinnersHTML():`<div class="tablewrap"><table class="table"><thead><tr><th>Platz</th><th>Mitglied</th><th>Teilnahmen</th></tr></thead><tbody>${ranks(year==='all'?null:year).map((m,i)=>`<tr><td>${i+1}.</td><td><div class="ranking-member">${avatarFor(m.id)}<span class="ranking-member-name">${esc(m.name)}</span></div></td><td><strong>${m.count}</strong></td></tr>`).join('')}</tbody></table></div>`}</div>`;
 }
 
 function myBirthday(){return birthdays.find(b=>b.member_id===profile?.member_id);}
