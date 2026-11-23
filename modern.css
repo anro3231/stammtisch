@@ -313,3 +313,5 @@ dialog.fx-inbox-dialog{position:fixed;inset:0;width:min(600px,calc(100% - 24px))
 @media(prefers-reduced-motion:reduce){.fx-bell,.reader-bell{transition:none!important}.fx-bell:active,.reader-bell:active{transform:none}}
 
 .member-trophies{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}.member-trophies h3{font-size:14px;margin:0 0 10px}.member-trophy-list{display:flex;flex-wrap:wrap;gap:8px}.member-trophy{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#fff9e8;border:1px solid #f0dfac;border-radius:12px;font-size:13px}.member-trophy-icon{font-size:20px}.member-trophy span:last-child{color:var(--muted);font-size:11px}
+
+.annual-awards{margin-top:22px;padding-top:16px;border-top:1px solid var(--border)}.annual-awards h3{font-size:16px;margin:0 0 12px}.annual-awards-list{display:grid;gap:8px}.annual-awards-list>div{padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--theme-tint,#f7f8fa);font-size:14px}
