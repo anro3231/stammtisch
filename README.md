@@ -2,6 +2,8 @@
 
 Stammtisch-App als statische Website mit Admin- und Lesemodus sowie Supabase für Anmeldung, Daten und serverseitige Benachrichtigungen.
 
+
+- Die Ranglisten enthalten eine eigene Kategorie **Jahres-Sieger** mit einem Pokalsymbol je Jahr. Die Jahressieger-Pokale erscheinen identisch im jeweiligen Mitgliedsprofil (Admin- und Leseransicht). Die historischen Sieger 2021–2025 sind vorbelegt; der Jahreswechsel-Versand ergänzt den Sieger des Vorjahres automatisch.
 ## Version 4.1.8
 
 - Die Teilnehmerzeilen im Admin-Stammtisch verwenden jetzt dieselbe Anordnung und Darstellung wie die Event-Abstimmung.
