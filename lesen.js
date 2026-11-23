@@ -369,7 +369,7 @@ function excursionDetails(id){
 }
 function readerAnnualWinnersHTML(){
  const winners=[...(data.annualWinners||[])].sort((a,b)=>a.year-b.year);
-  return winners.length?`<div class="list">${winners.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">🏆</span><div class="details"><strong>${w.year}</strong><small>${w.memberIds.map(id=>{const m=data.members.find(x=>x.id===id);return `${avatarFor(id)}<span>${esc(m?.name||'Unbekanntes Mitglied')}</span>`}).join(' & ')}</small></div></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';
+  return winners.length?`<div class="list">${winners.map(w=>`<div class="item annual-winner-row"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">🏆</span><strong class="annual-winner-year">${w.year}</strong><span class="annual-winner-names">${w.memberIds.map(id=>esc(memberName(id)||'Unbekanntes Mitglied')).join(' & ')}</span></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
@@ -468,8 +468,8 @@ function memberProfileHeader(m,photo,number,lastSeen){
 function memberProfileSummary({series,seriesAvailable=true,openCount,openAmount,finesAvailable=true}){
  return `<div class="member-summary"><div class="metric member-stat"><small class="member-stat-label">Aktuelle Stammtischserie</small><div class="member-stat-value"><div class="value">${esc(seriesAvailable?series:'–')}</div>${uiSymbol('flame','🔥')}</div><small>${seriesAvailable?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric member-stat"><small class="member-stat-label">Offene Strafen</small><div class="member-stat-value"><div class="value">${esc(finesAvailable?(openCount??0):'–')}</div>${uiSymbol('fines','€')}</div><small>${finesAvailable?esc(openAmount)+' offen':'Strafen nicht freigegeben'}</small></div></div>`;
 }
-function yearTrophy(year){const symbols={2021:'🏆',2022:'🥇',2023:'🥈',2024:'🥉',2025:'🏅'};return symbols[String(year)]||['🏆','🥇','🥈','🥉','🏅'][((Number(year)||0)%5+5)%5];}
-function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>Array.isArray(w.memberIds)&&w.memberIds.includes(id)).sort((a,b)=>a.year-b.year);return `<section class="member-trophies"><h3 class="member-section-title">🏆 Jahres-Sieger-Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Jahressieger-Pokale.</p>'}</section>`;}
+function yearTrophy(year){return '🏆';}
+function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>Array.isArray(w.memberIds)&&w.memberIds.includes(id)).sort((a,b)=>a.year-b.year);return `<section class="member-trophies"><h3 class="member-section-title">🏆 Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Pokale.</p>'}</section>`;}
 function memberHistoryRow(meeting,status,dateText){
  return `<div class="item">${termDateBadge(meeting.date)}<div class="details"><strong>${esc(dateText)}</strong><small class="member-history-place">${uiSymbol('location','⌖')}<span>${esc(meeting.location||'Ohne Gasthaus')}</span></small></div><span class="chip ${status==='present'?'yes-chip':status==='absent'?'no-chip':'gray'}">${voteStatusSymbol(status)?voteStatusHTML(status):'Nicht erfasst'}</span></div>`;
 }
