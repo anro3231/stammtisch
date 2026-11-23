@@ -311,3 +311,6 @@ dialog.fx-inbox-dialog{position:fixed;inset:0;width:min(600px,calc(100% - 24px))
 /* Shared, smooth bell interaction for admin and member views. */
 @media(hover:hover){.fx-bell:hover,.reader-bell:hover{background:var(--theme-soft,#fff5f7)!important;border-color:var(--accent)!important}}
 @media(prefers-reduced-motion:reduce){.fx-bell,.reader-bell{transition:none!important}.fx-bell:active,.reader-bell:active{transform:none}}
+
+/* Jahressieger-Pokale in Ranglisten und Mitgliedsprofilen. */
+.member-trophies{margin:14px 0}.annual-winner-trophy{display:inline-flex;align-items:center;justify-content:center;min-width:2.25rem;font-size:1.5rem;line-height:1.3}
