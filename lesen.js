@@ -671,10 +671,20 @@ async function disablePush(){
  }catch(e){alert('Deaktivieren fehlgeschlagen: '+(e.message||String(e)));}
 }
 
+function withTimeout(promise,ms,label){
+ let timer;
+ return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label)),ms);})]).finally(()=>clearTimeout(timer));
+}
 async function initClient(){
  const cfg=window.FANTASTIX_CLOUD;
  if(!cfg||!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(String(cfg.url||''))||!String(cfg.key||'').startsWith('sb_publishable_')&&!String(cfg.key||'').startsWith('eyJ'))throw Error('Cloud noch nicht eingerichtet.');
- const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.57.0');
+ let supabaseModule;
+ try{supabaseModule=await withTimeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),10000,'Supabase-Bibliothek lädt zu langsam.');}
+ catch(firstError){
+  try{supabaseModule=await withTimeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),10000,'Supabase-Bibliothek ist derzeit nicht erreichbar.');}
+  catch(secondError){throw new Error('Die Anmeldekomponente konnte nicht geladen werden. Bitte Seite neu laden. ('+(secondError.message||firstError.message)+')');}
+ }
+ const {createClient}=supabaseModule;
  cloud=createClient(cfg.url.replace(/\/$/,''),cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
  return cloud;
 }
@@ -902,7 +912,15 @@ document.addEventListener('change',e=>{if(e.target.id==='fine-member-filter'){fi
 navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='fantastix-push-open'&&['dashboard','meetings','calendar','excursions','members','cash'].includes(e.data.tab)){readerEntry=null;tab=e.data.tab;if(data)renderApp();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)refresh({background:true});});
 setInterval(()=>{if(!document.hidden&&user&&!busy)refresh({background:true});},60000);
-(async()=>{try{await initClient();const {data:auth}=await cloud.auth.getUser();user=auth?.user||null;if(user)await refresh();else renderGate();}catch(e){renderGate('Cloud-Verbindung: '+e.message);}})();
+(async()=>{
+ try{
+  await initClient();
+  // iOS Safari can stall while restoring a persisted session; show login instead of an endless splash.
+  const {data:auth}=await withTimeout(cloud.auth.getUser(),8000,'Die gespeicherte Sitzung konnte nicht rechtzeitig geladen werden. Bitte melde dich erneut an.');
+  user=auth?.user||null;
+  if(user)await refresh();else renderGate();
+ }catch(e){renderGate('Cloud-Verbindung: '+(e.message||String(e)));}
+})();
 
 // Presence and inbox are refreshed by the same coordinated background read.
 
