@@ -369,8 +369,7 @@ function excursionDetails(id){
 }
 function readerAnnualWinnersHTML(){
  const winners=[...(data.annualWinners||[])].sort((a,b)=>a.year-b.year);
- const symbols={2021:'🏆',2022:'🥇',2023:'🥈',2024:'🥉',2025:'🏅'};
- return winners.length?`<div class="list">${winners.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">${symbols[w.year]||'🏆'}</span><div class="details"><strong>${w.year}</strong><small>${w.memberIds.map(id=>esc(data.members.find(m=>m.id===id)?.name||'Unbekanntes Mitglied')).join(' & ')}</small></div></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';
+  return winners.length?`<div class="list">${winners.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">🏆</span><div class="details"><strong>${w.year}</strong><small>${w.memberIds.map(id=>{const m=data.members.find(x=>x.id===id);return `${avatarFor(id)}<span>${esc(m?.name||'Unbekanntes Mitglied')}</span>`}).join(' & ')}</small></div></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';
 }
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
