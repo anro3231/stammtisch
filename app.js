@@ -48,7 +48,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "4.1.8";
+const APP_VERSION = window.FX_VERSION || "4.1.10";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -358,8 +358,14 @@ function strongestStreakHTML(){
  const best=Math.max(0,...rows.map(m=>m.streak)),leaders=rows.filter(m=>m.streak===best).sort(byMemberNo);
  return `<section class="card streak-card"><h2>Stärkste Stammtischserie ${uiSymbol('flame','🔥')}</h2><div class="streak-value">${best}</div><p class="muted tiny">Stammtische in Folge</p>${best?`<div class="leader-list">${leaders.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div>`:'<p class="muted">Aktuell führt kein Mitglied eine Serie.</p>'}</section>`;
 }
+function memberTrophyHTML(id){
+ const awards=[{year:2021,names:['Winkler']},{year:2022,names:['Zeigi']},{year:2023,names:['Jan']},{year:2024,names:['Dani']},{year:2025,names:['Dani','Winkler']}];
+ if(today()>='2027-01-01'){const winners=leaders('2026');if(winners.length)awards.push({year:2026,names:winners.map(m=>m.name)});}
+ const won=awards.filter(a=>a.names.includes(member(id)?.name)).sort((a,b)=>b.year-a.year);
+ return won.length?'<section class="member-trophies"><h3>🏆 Stammtisch-Jahressieger</h3><div class="member-trophy-list">'+won.map(a=>'<div class="member-trophy"><span class="member-trophy-icon" aria-hidden="true">🏆</span><strong>'+a.year+'</strong><span>Jahressieger</span></div>').join('')+'</div></section>':'';
+}
 function memberProfileHeader(m,photo,number,lastSeen){
- return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}<span class="member-profile-status ${m.active===false?'is-archived':''}">${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</span></div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p></header>`;
+ return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}<span class="member-profile-status ${m.active===false?'is-archived':''}">${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</span></div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p>${memberTrophyHTML(m.id)}</header>`;
 }
 function memberProfileSummary({series,seriesAvailable=true,openCount,openAmount,finesAvailable=true}){
  return `<div class="member-summary"><div class="metric member-stat"><small class="member-stat-label">Aktuelle Stammtischserie</small><div class="member-stat-value"><div class="value">${esc(seriesAvailable?series:'–')}</div>${uiSymbol('flame','🔥')}</div><small>${seriesAvailable?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric member-stat"><small class="member-stat-label">Offene Strafen</small><div class="member-stat-value"><div class="value">${esc(finesAvailable?(openCount??0):'–')}</div>${uiSymbol('fines','€')}</div><small>${finesAvailable?esc(openAmount)+' offen':'Strafen nicht freigegeben'}</small></div></div>`;
