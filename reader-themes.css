@@ -33,7 +33,7 @@ html[data-reader-theme] :is(.card,.metric:not(.beer-countdown),.attendee-block,.
 html[data-reader-theme] :is(input,select,textarea){background:var(--surface);color:var(--ink);border-color:var(--border);outline-color:var(--accent)}
 html[data-reader-theme] :is(.next-card,.vote-panel,.roster-header,.organizer-edit,.photo-picker,.member-event-completed,.notice){background:var(--theme-tint);border-color:var(--border);color:var(--ink)}
 html[data-reader-theme] :is(.ghost,.smallbtn,.readonly-nav .navbutton.active,.ranking-filter.is-active,.chip:not(.meeting-status):not(.yes-chip):not(.no-chip)){background:var(--theme-soft);color:var(--accent)}
-html[data-reader-theme] :is(.button,.cash-hero .button){background:var(--accent);color:var(--theme-on-accent)}
+html[data-reader-theme] :is(.button,.cash-hero .button,.photo-upload-btn){background:var(--accent);color:var(--theme-on-accent)}
 html[data-reader-theme] .button:active{background:var(--accent-dark)}
 html[data-reader-theme] :is(.readonly-footer,.reader-entry-info>span,.reader-entry-info small,.roster-header small,.vote-stamp,.meeting-note-visible,.meeting-note-editor,.absence-reason,.fine-reason,.push-status,.push-setup.is-enabled strong){color:var(--muted)}
 html[data-reader-theme] :is(.reader-entry-end,.account-tools summary,.metric .value.green){color:var(--accent)}

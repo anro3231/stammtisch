@@ -399,7 +399,7 @@ let meetingListFilter='upcoming',excursionListFilter='upcoming';
 function termFilterControls(kind,selected){return `<div class="ranking-filters term-list-filters" role="group" aria-label="${kind==='meeting'?'Stammtische':'Events'} filtern">${[['upcoming','Anstehend'],['past','Vergangen']].map(([value,label])=>`<button type="button" class="ranking-filter ${selected===value?'is-active':''}" data-term-filter="${kind}" data-filter-value="${value}" aria-pressed="${selected===value}">${label}</button>`).join('')}</div>`;}
 function termListGroups(groups,renderEntry,emptyText){
  const visible=groups.filter(group=>group.items.length);
- return visible.length?visible.map(group=>`<section class="card reader-entry-list term-list" aria-label="${esc(group.title)}"><h2 class="term-list-heading"><span>${uiSymbol('calendar','▦')}${esc(group.title)}</span><small>${group.items.length}</small></h2>${group.items.map(renderEntry).join('')}</section>`).join(''):`<section class="card term-list"><p class="muted">${esc(emptyText)}</p></section>`;
+ return visible.length?visible.map(group=>`<section class="card reader-entry-list term-list" aria-label="${esc(group.title)}">${group.items.map(renderEntry).join('')}</section>`).join(''):`<section class="card term-list"><p class="muted">${esc(emptyText)}</p></section>`;
 }
 function upcomingTermOrder(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.time||'').localeCompare(String(b.time||''))||String(a.title||'').localeCompare(String(b.title||''),'de');}
 function pastTermOrder(a,b){return String(b.endDate||b.date||'').localeCompare(String(a.endDate||a.date||''))||String(b.time||'').localeCompare(String(a.time||''));}
