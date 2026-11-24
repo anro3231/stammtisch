@@ -2,12 +2,14 @@
 (()=>{
 'use strict';
 const themes=[
- {id:'standard',name:'Standard',description:'Aktuelles Design',color:'#151515'},
- {id:'dark',name:'Graphit',description:'Graphit & Türkis',color:'#10191c'},
- {id:'blue',name:'Azur',description:'Azur & Eis',color:'#edf3fc'},
- {id:'green',name:'Wald',description:'Wald & Mint',color:'#eef5f1'},
- {id:'violet',name:'Pflaume',description:'Pflaume & Flieder',color:'#f5eff9'},
- {id:'sand',name:'Kupfer',description:'Kupfer & Hafer',color:'#f7f0e6'}
+ {id:'standard',name:'Standard',description:'Bestehendes Rot-Weiß-Design',color:'#c92540'},
+ {id:'dark',name:'Dark',description:'Dunkel mit Türkis-Akzent',color:'#10191c'},
+ {id:'blue',name:'Beige',description:'Warmweiß & Sand',color:'#f3eee5'},
+ {id:'green',name:'Grau',description:'Kühles Hellgrau & Schiefer',color:'#eef0f2'},
+ {id:'violet',name:'Salbei',description:'Sanftes Grün & Creme',color:'#edf2eb'},
+ {id:'sand',name:'Sand',description:'Helles Beige & Braun',color:'#f5eddf'},
+ {id:'slate',name:'Graphit',description:'Steingrau & Silber',color:'#e9ecef'},
+ {id:'night',name:'Nachtblau',description:'Dunkelblau & Eisblau',color:'#101a2b'}
 ],key='fantastix.reader.theme.device.v1',root=document.documentElement;
 const meta=document.querySelector('meta[name="theme-color"]'),originalColor=meta?.content;
 const photoKey='fantastix.reader.daily-photo.device.v1';

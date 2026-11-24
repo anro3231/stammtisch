@@ -395,6 +395,8 @@ function termMeta(icon,text){return `<span class="term-meta-row">${uiSymbol(icon
 function termEntryBody({title,dateText,time,location,organizers,summary}){
  return `<span class="next-date-row term-list-date"><span class="next-calendar">${uiSymbol('calendar','▦')}</span><strong class="next-date">${esc(dateText||title)}</strong></span>${dateText?`<strong class="term-entry-title">${esc(title)}</strong>`:''}<span class="term-entry-meta">${termMeta('clock',time?time+' Uhr':'Uhrzeit noch offen')}${termMeta('location',location)}${organizers?termMeta('members',organizers):''}</span><span class="term-entry-footer">${summary||'<span></span>'}<span class="term-entry-open">Öffnen ${uiSymbol('chevronRight','›')}</span></span>`;
 }
+let meetingListFilter='upcoming',excursionListFilter='upcoming';
+function termFilterControls(kind,selected){return `<div class="ranking-filters term-list-filters" role="group" aria-label="${kind==='meeting'?'Stammtische':'Events'} filtern">${[['upcoming','Anstehend'],['past','Vergangen']].map(([value,label])=>`<button type="button" class="ranking-filter ${selected===value?'is-active':''}" data-term-filter="${kind}" data-filter-value="${value}" aria-pressed="${selected===value}">${label}</button>`).join('')}</div>`;}
 function termListGroups(groups,renderEntry,emptyText){
  const visible=groups.filter(group=>group.items.length);
  return visible.length?visible.map(group=>`<section class="card reader-entry-list term-list" aria-label="${esc(group.title)}"><h2 class="term-list-heading"><span>${uiSymbol('calendar','▦')}${esc(group.title)}</span><small>${group.items.length}</small></h2>${group.items.map(renderEntry).join('')}</section>`).join(''):`<section class="card term-list"><p class="muted">${esc(emptyText)}</p></section>`;
@@ -402,9 +404,10 @@ function termListGroups(groups,renderEntry,emptyText){
 function upcomingTermOrder(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.time||'').localeCompare(String(b.time||''))||String(a.title||'').localeCompare(String(b.title||''),'de');}
 function pastTermOrder(a,b){return String(b.endDate||b.date||'').localeCompare(String(a.endDate||a.date||''))||String(b.time||'').localeCompare(String(a.time||''));}
 function meetingsHTML(){
- const groups=[{title:'Anstehend',items:data.meetings.filter(m=>m.date>=today()).sort(upcomingTermOrder)},{title:'Vergangen',items:data.meetings.filter(m=>m.date<today()).sort(pastTermOrder)}];
+ const items=(meetingListFilter==='upcoming'?data.meetings.filter(m=>m.date>=today()).sort(upcomingTermOrder):data.meetings.filter(m=>m.date<today()).sort(pastTermOrder));
+ const groups=[{title:meetingListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=m=>{const entries=data.members.map(p=>effectiveAttendance(m,p.id)).filter(Boolean);return `<button type="button" class="reader-entry" data-action="meeting-edit" data-id="${esc(m.id)}" aria-label="Stammtisch am ${esc(fmtDate(m.date))} öffnen">${termEntryBody({date:m.date,title:fmtDate(m.date),time:m.time||'18:30',location:m.location||'Gasthaus noch offen',organizers:'Organisator: '+(member(m.organizerId)?.name||'Noch offen'),summary:adminCountSummary({yes:entries.filter(x=>x.status==='present').length,unsure:entries.filter(x=>x.status==='unsure').length,no:entries.filter(x=>x.status==='absent').length})})}</button>`;};
- return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
+ return `${pageHead('','Stammtische','')}<div class="toolbar"><button class="button" data-action="meeting-new">+ Neuer Stammtisch</button></div>${termFilterControls('meeting',meetingListFilter)}${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
 }
 function calendarHTML(){return `${pageHead('','Kalender','Stammtische, Events und Geburtstage.')}${window.FantastiXCalendar.render({...data,birthdays:birthdays.map(b=>({...b,name:member(b.member_id)?.name||'Mitglied'}))},calendarMonth,calendarSelected,true)}`;}
 function termStatusHTML(label){const kind={'Heute':'today','Geplant':'planned','Vergangen':'past','Abgeschlossen':'closed','Läuft':'live','In Planung':'draft'}[label]||'draft';return `<span class="chip meeting-status status-${kind}">${esc(label)}</span>`;}
@@ -415,9 +418,9 @@ function eventDeadlineISO(value){if(!value)return '';const m=/^(\d{4})-(\d{2})-(
 function eventEndDeadline(x){const end=x?.endDate||x?.date;if(!/^\d{4}-\d{2}-\d{2}$/.test(end||''))return null;return Date.parse(eventDeadlineISO(end+'T23:59')||'')+59999;}
 function eventVoteDeadline(x){if(x?.voteDeadlineAt){const custom=Date.parse(x.voteDeadlineAt);if(Number.isFinite(custom))return custom;}return eventEndDeadline(x);}
 function excursionsHTML(){
- const list=data.excursions||[],groups=[{title:'Anstehend',items:list.filter(x=>x.date&&!eventIsPast(x)).sort(upcomingTermOrder)},{title:'Noch ohne Termin',items:list.filter(x=>!x.date&&!eventIsPast(x)).sort(upcomingTermOrder)},{title:'Vergangen',items:list.filter(eventIsPast).sort(pastTermOrder)}];
+ const list=data.excursions||[],items=(excursionListFilter==='upcoming'?list.filter(x=>!eventIsPast(x)).sort(upcomingTermOrder):list.filter(eventIsPast).sort(pastTermOrder)),groups=[{title:excursionListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=x=>`<button type="button" class="reader-entry" data-action="excursion-edit" data-id="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen">${termEntryBody({date:x.date,title:x.title,dateText:excursionPeriod({...x,time:''}),time:x.time,location:x.location||'Ort noch offen',organizers:'Organisatoren: '+excursionOrganizers(x),summary:adminCountSummary(excursionVoteCounts(x.id))})}</button>`;
- return `${pageHead('','Events','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Event planen</button></div>${termListGroups(groups,entry,'Noch keine Events eingetragen.')}<p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
+ return `${pageHead('','Events','')}<div class="toolbar"><button class="button" data-action="excursion-new">+ Event planen</button></div>${termFilterControls('excursion',excursionListFilter)}${termListGroups(groups,entry,'Noch keine Events eingetragen.')}<p class="hint">Events beeinflussen weder Ranglisten noch Strafenkassa.</p>`;
 }
 function eventVoteSummary(id){return adminCountSummary(excursionVoteCounts(id));}
 function excursionForm(id){
@@ -1182,6 +1185,7 @@ async function sendAdminPushTest(){
 
 /* Interaktionen */
 document.addEventListener('click',async ev=>{
+ const termFilter=ev.target.closest('[data-term-filter]');if(termFilter){if(termFilter.dataset.termFilter==='meeting')meetingListFilter=termFilter.dataset.filterValue;else excursionListFilter=termFilter.dataset.filterValue;render();return;}
  if(ev.target.closest('[data-fines-more]')){fineListLimit+=10;render();return;}const calendarNav=ev.target.closest('[data-calendar-move],[data-calendar-day],[data-calendar-today]');
  if(calendarNav){if(calendarNav.dataset.calendarMove){calendarMonth=window.FantastiXCalendar.move(calendarMonth,Number(calendarNav.dataset.calendarMove));calendarSelected=calendarMonth+'-01';}else if(calendarNav.hasAttribute('data-calendar-today')){calendarSelected=today();calendarMonth=calendarSelected.slice(0,7);}else{calendarSelected=calendarNav.dataset.calendarDay;calendarMonth=calendarSelected.slice(0,7);}render();return;}
  const el=ev.target.closest('[data-action],[data-page]');if(!el)return;
