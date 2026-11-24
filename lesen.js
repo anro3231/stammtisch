@@ -259,6 +259,8 @@ function termMeta(icon,text){return `<span class="term-meta-row">${uiSymbol(icon
 function termEntryBody({title,dateText,time,location,organizers,summary}){
  return `<span class="next-date-row term-list-date"><span class="next-calendar">${uiSymbol('calendar','▦')}</span><strong class="next-date">${esc(dateText||title)}</strong></span>${dateText?`<strong class="term-entry-title">${esc(title)}</strong>`:''}<span class="term-entry-meta">${termMeta('clock',time?time+' Uhr':'Uhrzeit noch offen')}${termMeta('location',location)}${organizers?termMeta('members',organizers):''}</span><span class="term-entry-footer">${summary||'<span></span>'}<span class="term-entry-open">Öffnen ${uiSymbol('chevronRight','›')}</span></span>`;
 }
+let meetingListFilter='upcoming',excursionListFilter='upcoming';
+function termFilterControls(kind,selected){return `<div class="ranking-filters term-list-filters" role="group" aria-label="${kind==='meeting'?'Stammtische':'Events'} filtern">${[['upcoming','Anstehend'],['past','Vergangen']].map(([value,label])=>`<button type="button" class="ranking-filter ${selected===value?'is-active':''}" data-term-filter="${kind}" data-filter-value="${value}" aria-pressed="${selected===value}">${label}</button>`).join('')}</div>`;}
 function termListGroups(groups,renderEntry,emptyText){
  const visible=groups.filter(group=>group.items.length);
  return visible.length?visible.map(group=>`<section class="card reader-entry-list term-list" aria-label="${esc(group.title)}"><h2 class="term-list-heading"><span>${uiSymbol('calendar','▦')}${esc(group.title)}</span><small>${group.items.length}</small></h2>${group.items.map(renderEntry).join('')}</section>`).join(''):`<section class="card term-list"><p class="muted">${esc(emptyText)}</p></section>`;
@@ -268,9 +270,10 @@ function pastTermOrder(a,b){return String(b.endDate||b.date||'').localeCompare(S
 function meetings(){
  if(!section('meetings'))return empty('Stammtische sind nicht freigegeben.');
  if(readerEntry?.kind==='meeting'&&data.meetings.some(m=>m.id===readerEntry.id))return meetingDetails(readerEntry.id);
- const groups=[{title:'Anstehend',items:data.meetings.filter(m=>m.date>=today()).sort(upcomingTermOrder)},{title:'Vergangen',items:data.meetings.filter(m=>m.date<today()).sort(pastTermOrder)}];
+ const items=(meetingListFilter==='upcoming'?data.meetings.filter(m=>m.date>=today()).sort(upcomingTermOrder):data.meetings.filter(m=>m.date<today()).sort(pastTermOrder));
+ const groups=[{title:meetingListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=m=>`<button type="button" class="reader-entry" data-reader-meeting="${esc(m.id)}" aria-label="Stammtisch am ${esc(dateLabel(m.date))} öffnen">${termEntryBody({date:m.date,title:dateLabel(m.date),time:timeLabel(m.time),location:m.location||'Gasthaus noch offen',organizers:section('members')?'Organisator: '+(member(m.organizerId)?.name||'Noch offen'):'',summary:section('members')?readerCountSummary(rsvpCounts(m)):''})}</button>`;
- return `${heading('Stammtische')}${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
+ return `${heading('Stammtische')}${termFilterControls('meeting',meetingListFilter)}${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
 }
 function termStatusHTML(label){const kind={'Heute':'today','Geplant':'planned','Vergangen':'past','Abgeschlossen':'closed','Läuft':'live','In Planung':'draft'}[label]||'draft';return `<span class="chip meeting-status status-${kind}">${esc(label)}</span>`;}
 function eventIsPast(x){return !!x.completed||!!(x.endDate||x.date)&&(x.endDate||x.date)<today();}
@@ -298,9 +301,9 @@ async function saveMemberEvent(form){if(form.dataset.saving)return;const fd=new 
 function excursions(){
  if(!section('excursions'))return empty('Events sind nicht freigegeben.');
  if(readerEntry?.kind==='excursion'&&(data.excursions||[]).some(x=>x.id===readerEntry.id))return excursionDetails(readerEntry.id);
- const list=data.excursions||[],groups=[{title:'Anstehend',items:list.filter(x=>x.date&&!eventIsPast(x)).sort(upcomingTermOrder)},{title:'Noch ohne Termin',items:list.filter(x=>!x.date&&!eventIsPast(x)).sort(upcomingTermOrder)},{title:'Vergangen',items:list.filter(eventIsPast).sort(pastTermOrder)}];
+ const list=data.excursions||[],items=(excursionListFilter==='upcoming'?list.filter(x=>!eventIsPast(x)).sort(upcomingTermOrder):list.filter(eventIsPast).sort(pastTermOrder)),groups=[{title:excursionListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=x=>`<button type="button" class="reader-entry" data-reader-excursion="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen">${termEntryBody({date:x.date,title:x.title,dateText:tripDateLabel({...x,time:''}),time:x.time,location:x.location||'Ort noch offen',organizers:'Organisatoren: '+tripOrganizers(x),summary:readerCountSummary(excursionCount(x.id))})}</button>`;
- return `${heading('Events')}<div class="toolbar"><button class="button" type="button" data-member-event-new>＋ Event planen</button></div>${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}${termListGroups(groups,entry,'Noch keine Events eingetragen.')}`;
+ return `${heading('Events')}<div class="toolbar"><button class="button" type="button" data-member-event-new>＋ Event planen</button></div>${termFilterControls('excursion',excursionListFilter)}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}${termListGroups(groups,entry,'Noch keine Events eingetragen.')}`;
 }
 function openReaderEntry(kind,id){
  const target=kind==='member'?'members':kind==='meeting'?'meetings':'excursions';
@@ -850,6 +853,7 @@ document.addEventListener('submit',e=>{
  }
 });
 document.addEventListener('click',e=>{
+ const termFilter=e.target.closest('[data-term-filter]');if(termFilter){if(termFilter.dataset.termFilter==='meeting')meetingListFilter=termFilter.dataset.filterValue;else excursionListFilter=termFilter.dataset.filterValue;renderApp();return;}
  if(e.target.closest('[data-fines-more]')){fineListLimit+=10;renderApp();return;}
  const memberEntry=e.target.closest('[data-reader-member]');
  if(memberEntry){openReaderEntry('member',memberEntry.dataset.readerMember);return;}
