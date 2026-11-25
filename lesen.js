@@ -694,11 +694,12 @@ async function saveCashierForm(form){
  if(profile?.is_cashier!==true||busy)return;
  const fd=new FormData(form),kind=form.dataset.cashierForm;
  const cents=value=>{const raw=String(value||'').trim().replace(/\s/g,'').replace(/€/g,'').replace(',','.');if(!/^\d+(\.\d{1,2})?$/.test(raw))return NaN;const v=Number(raw)*100;return Number.isSafeInteger(Math.round(v))?Math.round(v):NaN;};
+ const signedCents=value=>{const raw=String(value||'').trim().replace(/\s/g,'').replace(/€/g,'').replace(',','.');if(!/^-?\d+(\.\d{1,2})?$/.test(raw))return NaN;const v=Number(raw)*100;return Number.isSafeInteger(Math.round(v))?Math.round(v):NaN;};
  let action,payload={};
  if(kind==='fine'){action='fine_create';payload={memberId:String(fd.get('memberId')||''),amountCents:cents(fd.get('amount')),reason:String(fd.get('reason')||'').trim()};if(!payload.memberId||!payload.reason||payload.reason.length>300||!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0)return alert('Bitte Mitglied, Grund und einen positiven Betrag eingeben.');}
  else if(kind==='payment'){action='fine_payment';payload={fineId:String(fd.get('fineId')||''),amountCents:cents(fd.get('amount')),method:String(fd.get('method')||'Bar'),note:String(fd.get('note')||'').trim()};if(!payload.fineId||!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0)return alert('Bitte einen gültigen Zahlungsbetrag eingeben.');}
  else if(kind==='cash-expense'){action='cash_expense';payload={amountCents:cents(fd.get('amount')),note:String(fd.get('note')||'').trim()};if(!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0||!payload.note||payload.note.length>180)return alert('Bitte Betrag und Verwendungszweck eingeben.');}
- else if(kind==='cash-balance'){action='cash_balance';payload={balanceCents:cents(fd.get('balance')),note:String(fd.get('note')||'').trim()};if(!Number.isSafeInteger(payload.balanceCents)||payload.note.length>180)return alert('Bitte einen gültigen Kontostand eingeben.');}
+ else if(kind==='cash-balance'){action='cash_balance';payload={balanceCents:signedCents(fd.get('balance')),note:String(fd.get('note')||'').trim()};if(!Number.isSafeInteger(payload.balanceCents)||payload.note.length>180)return alert('Bitte einen gültigen Kontostand eingeben.');}
  else return;
  busy=true;
  try{const {error}=await cloud.rpc('fantastix_cashier_update',{p_action:action,p_payload:payload});if(error)throw error;await refresh();}
