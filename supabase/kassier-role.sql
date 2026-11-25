@@ -307,7 +307,7 @@ BEGIN
     RAISE EXCEPTION 'Keine Kassiererberechtigung.' USING ERRCODE = '42501';
   END IF;
 
-  IF pg_catalog.jsonb_typeof(p_payload) <> 'object' THEN
+  IF p_payload IS NULL OR pg_catalog.jsonb_typeof(p_payload) <> 'object' THEN
     RAISE EXCEPTION 'Ungültige Kassendaten.';
   END IF;
 
@@ -328,7 +328,7 @@ BEGIN
     v_amount := (p_payload->>'amountCents')::bigint;
     v_reason := pg_catalog.btrim(coalesce(p_payload->>'reason', ''));
 
-    IF v_member IS NULL OR v_amount <= 0 OR v_amount > 100000000000
+    IF v_member IS NULL OR v_amount IS NULL OR v_amount <= 0 OR v_amount > 100000000000
        OR v_reason = '' OR pg_catalog.char_length(v_reason) > 300 THEN
       RAISE EXCEPTION 'Bitte Mitglied, Grund und gültigen Betrag angeben.';
     END IF;
@@ -359,7 +359,7 @@ BEGIN
     v_method := coalesce(nullif(p_payload->>'method', ''), 'Bar');
     v_note := pg_catalog.btrim(coalesce(p_payload->>'note', ''));
 
-    IF v_fine_id IS NULL OR v_amount <= 0 OR v_amount > 100000000000
+    IF v_fine_id IS NULL OR v_amount IS NULL OR v_amount <= 0 OR v_amount > 100000000000
        OR v_method NOT IN ('Bar', 'Überweisung', 'Sonstiges')
        OR pg_catalog.char_length(v_note) > 200 THEN
       RAISE EXCEPTION 'Ungültige Zahlungsdaten.';
@@ -399,7 +399,7 @@ BEGIN
     v_amount := (p_payload->>'amountCents')::bigint;
     v_note := pg_catalog.btrim(coalesce(p_payload->>'note', ''));
 
-    IF v_amount <= 0 OR v_amount > 100000000000
+    IF v_amount IS NULL OR v_amount <= 0 OR v_amount > 100000000000
        OR v_note = '' OR pg_catalog.char_length(v_note) > 180 THEN
       RAISE EXCEPTION 'Bitte positiven Betrag und Verwendungszweck angeben.';
     END IF;
@@ -419,7 +419,7 @@ BEGIN
     v_target := (p_payload->>'balanceCents')::bigint;
     v_note := pg_catalog.btrim(coalesce(p_payload->>'note', ''));
 
-    IF v_target < -100000000000 OR v_target > 100000000000
+    IF v_target IS NULL OR v_target < -100000000000 OR v_target > 100000000000
        OR pg_catalog.char_length(v_note) > 180 THEN
       RAISE EXCEPTION 'Ungültiger Kontostand.';
     END IF;
