@@ -464,6 +464,8 @@ BEGIN
     RAISE EXCEPTION 'Unbekannte Kassenaktion.';
   END IF;
 
+  v_doc := pg_catalog.jsonb_set(v_doc, '{modifiedAt}', pg_catalog.to_jsonb(now()::text), true);
+
   UPDATE public.fantastix_private
   SET content = v_doc,
       revision = revision + 1,
