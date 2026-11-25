@@ -381,9 +381,10 @@ function excursionDetails(id){
 function readerAnnualWinnersHTML(){
  const winners=[...(data.annualWinners||[])].sort((a,b)=>Number(b.year)-Number(a.year));
  const holders=leaders(null),leaderCount=holders[0]?.count||0;
- const perpetual=leaderCount>0?`<div class="perpetual-trophy" aria-label="Wanderpokal"><div class="perpetual-cup" aria-hidden="true">🏆</div><div class="perpetual-names">\${holders.map(m=>esc(m.name)).join(' & ')}</div></div>`:'';
- const annual=winners.map(w=>`<article class="annual-trophy"><div class="annual-cup" aria-label="Pokal \${w.year}">🏆</div><div class="annual-year">\${esc(w.year)}</div><div class="annual-name">\${w.memberIds.map(id=>esc(memberName(id)||'Unbekanntes Mitglied')).join(' & ')}</div></article>`).join('');
- return `<section class="trophy-room">\${perpetual}<div class="annual-trophy-grid">\${annual}</div></section>`;
+ const perpetual=leaderCount>0?'<article class="annual-trophy" aria-label="Ewige Rangliste"><div class="annual-cup" aria-hidden="true">🏆</div><div class="annual-year">EWIG</div><div class="annual-name">'+holders.map(m=>esc(m.name)).join(' & ')+'</div></article>':'';
+ const annual=winners.map(w=>'<article class="annual-trophy"><div class="annual-cup" aria-label="Pokal '+esc(w.year)+'">🏆</div><div class="annual-year">'+esc(w.year)+'</div><div class="annual-name">'+w.memberIds.map(id=>esc(memberName(id)||'Unbekanntes Mitglied')).join(' & ')+'</div></article>').join('');
+ return '<section class="trophy-room"><div class="annual-trophy-grid">'+perpetual+annual+'</div></section>';
+}
 function ranking(){
  if(!section('members'))return empty('Ranglisten sind nicht freigegeben.');
  const nowYear=Number(currentYear());const years=[...new Set([...Array.from({length:Math.max(1,nowYear-2026+1)},(_,i)=>String(2026+i)),...data.meetings.map(m=>m.date.slice(0,4))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();
@@ -486,7 +487,7 @@ function memberProfileSummary({series,seriesAvailable=true,openCount,openAmount,
  return `<div class="member-summary"><div class="metric member-stat"><small class="member-stat-label">Aktuelle Stammtischserie</small><div class="member-stat-value"><div class="value">${esc(seriesAvailable?series:'–')}</div>${uiSymbol('flame','🔥')}</div><small>${seriesAvailable?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric member-stat"><small class="member-stat-label">Offene Strafen</small><div class="member-stat-value"><div class="value">${esc(finesAvailable?(openCount??0):'–')}</div>${uiSymbol('fines','€')}</div><small>${finesAvailable?esc(openAmount)+' offen':'Strafen nicht freigegeben'}</small></div></div>`;
 }
 function yearTrophy(year){return '🏆';}
-function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>Array.isArray(w.memberIds)&&w.memberIds.includes(id)).sort((a,b)=>b.year-a.year);return `<section class="member-trophies"><h3 class="member-section-title">🏆 Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Pokale.</p>'}</section>`;}
+function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>Array.isArray(w.memberIds)&&w.memberIds.includes(id)).sort((a,b)=>b.year-a.year);return `<section class="member-trophies"><h3 class="member-section-title">Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Pokale.</p>'}</section>`;}
 function memberHistoryRow(meeting,status,dateText){
  return `<div class="item">${termDateBadge(meeting.date)}<div class="details"><strong>${esc(dateText)}</strong><small class="member-history-place">${uiSymbol('location','⌖')}<span>${esc(meeting.location||'Ohne Gasthaus')}</span></small></div><span class="chip ${status==='present'?'yes-chip':status==='absent'?'no-chip':'gray'}">${voteStatusSymbol(status)?voteStatusHTML(status):'Nicht erfasst'}</span></div>`;
 }
