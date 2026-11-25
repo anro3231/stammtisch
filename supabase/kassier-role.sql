@@ -242,7 +242,9 @@ BEGIN
       'id', m.value->>'id',
       'name', m.value->>'name',
       'memberNumber', m.value->'memberNumber',
-      'active', coalesce(m.value->'active', 'true'::jsonb)
+      'active', coalesce(m.value->'active', 'true'::jsonb),
+      'historicalCount', coalesce(m.value->'historicalCount', '0'::jsonb),
+      'historical2026Count', coalesce(m.value->'historical2026Count', '0'::jsonb)
     )),
     '[]'::jsonb
   )
