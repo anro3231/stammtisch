@@ -16,16 +16,16 @@ function fineMemberFilterHTML(){
  const name=id=>data.members.find(m=>m.id===id)?.name||'(gelöschtes Mitglied)';
  return `<div class="field fine-filter"><label for="fine-member-filter">Strafen nach Mitglied filtern</label><select id="fine-member-filter"><option value="">Alle Mitglieder</option>${ids.sort((a,b)=>name(a).localeCompare(name(b),'de')).map(id=>`<option value="${esc(id)}" ${fineMemberFilter===id?'selected':''}>${esc(name(id))}</option>`).join('')}</select></div>`;
 }
-function filteredFineListHTML(items,admin=false){
+function filteredFineListHTML(items,admin=false,cashier=false){
  const filters=fineMemberFilterHTML(),filtered=orderedFines(items.filter(f=>!fineMemberFilter||f.memberId===fineMemberFilter));
- return filters+compactFineListHTML(filtered.slice(0,fineListLimit),admin)+(filtered.length?`<div class="fine-pagination"><p class="muted tiny">${Math.min(fineListLimit,filtered.length)} von ${filtered.length} Strafen</p>${filtered.length>fineListLimit?'<button type="button" class="ghost" data-fines-more>Mehr laden</button>':''}</div>`:'');
+ return filters+compactFineListHTML(filtered.slice(0,fineListLimit),admin,cashier)+(filtered.length?`<div class="fine-pagination"><p class="muted tiny">${Math.min(fineListLimit,filtered.length)} von ${filtered.length} Strafen</p>${filtered.length>fineListLimit?'<button type="button" class="ghost" data-fines-more>Mehr laden</button>':''}</div>`:'');
 }
 function orderedFines(items){return [...items].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id).localeCompare(String(a.id)));}
 function fineListDate(value){const m=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:'–';}
-function compactFineListHTML(items,admin=false){
+function compactFineListHTML(items,admin=false,cashier=false){
  const fines=orderedFines(items);
  if(!fines.length)return '<p class="muted">Keine Strafen für diese Auswahl.</p>';
- return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
+ return `<div class="fine-table-wrap"><table class="fine-table"><thead><tr><th scope="col">Datum</th><th scope="col">Mitglied</th><th scope="col">Grund</th><th scope="col">Betrag</th><th scope="col">Status</th></tr></thead><tbody>${fines.map(f=>{const open=admin?fineOpen(f):Math.max(0,n(f.amountCents)-data.payments.filter(p=>p.fineId===f.id).reduce((sum,p)=>sum+n(p.amountCents),0));const name=admin?(member(f.memberId)?.name||'(gelöschtes Mitglied)'):memberName(f.memberId);const paymentForm=cashier&&open>0?`<details class="cashier-payment"><summary>Zahlung kassieren</summary><form data-cashier-form="payment"><input type="hidden" name="fineId" value="${esc(f.id)}"><div class="field"><label>Betrag (€)</label><input name="amount" inputmode="decimal" value="${(open/100).toFixed(2).replace('.',',')}" required></div><div class="field"><label>Zahlungsart</label><select name="method"><option>Bar</option><option>Überweisung</option><option>Sonstiges</option></select></div><div class="field"><label>Notiz</label><input name="note" maxlength="200" placeholder="Optional"></div><button class="button" type="submit">Zahlung buchen</button></form></details>`:'';return `<tr data-fine-row="${esc(f.id)}"><td class="fine-date-cell"><time class="fine-date" ${f.date?`datetime="${esc(f.date)}"`:''}>${fineListDate(f.date)}</time></td><td class="fine-member">${esc(name)}</td><td class="fine-reason">${esc(f.reason||'Strafe')}</td><td class="fine-amount"><strong>${money(n(f.amountCents))}</strong></td><td class="fine-status-cell"><span class="fine-status ${open?'is-unpaid':'is-paid'}">${open?'Nicht bezahlt':'Bezahlt'}</span>${admin?`<div class="fine-actions">${open?`<button type="button" class="smallbtn" data-action="fine-pay" data-id="${esc(f.id)}">Kassieren</button>`:''}<button type="button" class="smallbtn" data-action="fine-view" data-id="${esc(f.id)}">Details</button></div>`:paymentForm}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 function voteStatusSymbol(status){return {present:'👍',yes:'👍',absent:'👎',no:'👎',unsure:'❓'}[status]||'';}
 function voteStatusLabel(status){return {present:'Dabei',yes:'Dabei',absent:'Nicht dabei',no:'Nicht dabei',unsure:'Unsicher'}[status]||'Noch keine Antwort';}
@@ -167,7 +167,7 @@ function renderGate(msg=''){
 function renderApp(){
  if(!data||!profile?.member_id)return renderGate();
  $('#auth-gate').hidden=true;$('#reader-app').hidden=false;
- const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Events','✈',section('excursions')],['calendar','Kalender','▦',section('meetings')||section('excursions')||section('members')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')],['more','Mehr','⋯',true]].filter(t=>t[3]);
+ const tabs=[['dashboard','Start','⌂',true],['meetings','Stammtisch','▣',section('meetings')],['excursions','Events','✈',section('excursions')],['calendar','Kalender','▦',section('meetings')||section('excursions')||section('members')],['ranking','Rangliste','★',section('members')],['members','Mitglieder','♙',section('members')],['cash','Kassa','€',section('cash')||section('fines')||profile?.is_cashier===true],['more','Mehr','⋯',true]].filter(t=>t[3]);
  if(!tabs.some(t=>t[0]===tab))tab='dashboard';
  $('#tabs').style?.setProperty('--nav-count',tabs.length);$('#tabs').innerHTML=tabs.map(([id,label,icon])=>`<button type="button" class="navbutton ${tab===id?'active':''}" data-tab="${id}" aria-label="${label}"><span class="tab-icon">${window.FantastixUI?.icon(id==='dashboard'?'home':id==='cash'?'fines':id)||esc(icon)}</span><span>${esc(label)}</span></button>`).join('');
  $('#content').innerHTML=({dashboard,meetings,excursions,calendar:calendarPage,ranking,members,cash,more:morePage}[tab])();
@@ -465,8 +465,12 @@ function strongestStreakHTML(){
  const best=Math.max(0,...rows.map(m=>m.streak)),leaders=rows.filter(m=>m.streak===best).sort((a,b)=>a.name.localeCompare(b.name,'de'));
  return `<section class="card streak-card"><h2>Stärkste Stammtischserie ${uiSymbol('flame','🔥')}</h2><div class="streak-value">${best}</div><p class="muted tiny">Stammtische in Folge</p>${best?`<div class="leader-list">${leaders.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div>`:'<p class="muted">Aktuell führt kein Mitglied eine Serie.</p>'}</section>`;
 }
+function memberRoleBadgesHTML(m){
+ const role=(data.roles||[]).find(r=>r.memberId===m.id);
+ return (role?.isAdmin?'<span class="chip member-profile-role">Admin</span>':'')+(role?.isCashier?'<span class="chip member-profile-role">Kassier</span>':'');
+}
 function memberProfileHeader(m,photo,number,lastSeen){
- return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}<span class="member-profile-status ${m.active===false?'is-archived':''}">${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</span></div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p></header>`;
+ return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}${memberRoleBadgesHTML(m)}</div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p></header>`;
 }
 function memberProfileSummary({series,seriesAvailable=true,openCount,openAmount,finesAvailable=true}){
  return `<div class="member-summary"><div class="metric member-stat"><small class="member-stat-label">Aktuelle Stammtischserie</small><div class="member-stat-value"><div class="value">${esc(seriesAvailable?series:'–')}</div>${uiSymbol('flame','🔥')}</div><small>${seriesAvailable?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric member-stat"><small class="member-stat-label">Offene Strafen</small><div class="member-stat-value"><div class="value">${esc(finesAvailable?(openCount??0):'–')}</div>${uiSymbol('fines','€')}</div><small>${finesAvailable?esc(openAmount)+' offen':'Strafen nicht freigegeben'}</small></div></div>`;
@@ -505,10 +509,12 @@ function readerFineBalancesHTML(){
  return `<section class="card"><h2>Offene Strafen pro Mitglied</h2><div class="list">${readerFineBalances().map(m=>`<div class="item"><div class="details"><strong>${esc(m.name)}</strong><small>${m.count} offene ${m.count===1?'Strafe':'Strafen'}</small></div><strong class="${m.amount?'red':'muted'}">${money(m.amount)}</strong></div>`).join('')||'<p class="muted">Keine Mitglieder vorhanden.</p>'}</div></section>`;
 }
 function cash(){
- if(!section('cash')&&!section('fines'))return empty('Kassa ist nicht freigegeben.');
+ const cashier=profile?.is_cashier===true,showCash=section('cash')||cashier,showFines=section('fines')||cashier;
+ if(!showCash&&!showFines)return empty('Kassa ist nicht freigegeben.');
  const c=data.cashbook||{},fined=data.fines.reduce((s,f)=>s+n(f.amountCents),0),paid=data.payments.reduce((s,p)=>s+n(p.amountCents),0);
- return `${heading('Kassa')}${section('cash')?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>`:''}
- ${section('fines')?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div>${readerFineBalancesHTML()}<section class="card"><h2>Einzelne Strafen</h2>${filteredFineListHTML(data.fines)}</section>`:''}${transferAccountHTML()}`;
+ const fineForm=cashier?`<section class="card"><h2>Strafe erfassen</h2><form data-cashier-form="fine"><div class="field"><label>Mitglied</label><select name="memberId" required>${[...data.members].sort((a,b)=>String(a.name).localeCompare(String(b.name),'de')).map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Betrag (€)</label><input name="amount" inputmode="decimal" placeholder="5,00" required></div><div class="field"><label>Grund</label><input name="reason" maxlength="300" required></div><button class="button" type="submit">Strafe speichern</button></form></section>`:''; 
+ const cashTools=cashier?`<section class="card"><h2>Kassenbuch bearbeiten</h2><details><summary>Ausgabe buchen</summary><form data-cashier-form="cash-expense"><div class="field"><label>Betrag (€)</label><input name="amount" inputmode="decimal" placeholder="25,00" required></div><div class="field"><label>Verwendungszweck</label><input name="note" maxlength="180" required></div><button class="button" type="submit">Ausgabe buchen</button></form></details><details><summary>Kontostand korrigieren</summary><form data-cashier-form="cash-balance"><div class="field"><label>Neuer Kontostand (€)</label><input name="balance" inputmode="decimal" value="${(Number(c.balanceCents||0)/100).toFixed(2).replace('.',',')}" required></div><div class="field"><label>Notiz</label><input name="note" maxlength="180" placeholder="Optional"></div><button class="button" type="submit">Kontostand speichern</button></form></details></section>`:''; 
+ return `${heading('Kassa')}${showCash?`<div class="cash-hero"><span>Kontostand</span><div class="cash-balance">${money(c.balanceCents)}</div></div><section class="card"><h2>Kassenbuch</h2><div class="list">${(c.transactions||[]).map(t=>`<div class="item"><div class="details"><strong>${esc(t.type==='expense'?'Ausgabe':t.type==='monthly'?'Monatsbeitrag':t.type==='adjustment'?'Korrektur':'Strafzahlung')}</strong><small>${esc(t.note||'')}</small></div><strong>${t.amountCents>0?'+':''}${money(t.amountCents)}</strong></div>`).join('')||'<p class="muted">Keine Buchungen</p>'}</div></section>${cashTools}`:''}${showFines?`<div class="metric-grid"><div class="metric"><small>Strafen gesamt</small><div class="value">${money(fined)}</div></div><div class="metric"><small>Offen</small><div class="value red">${money(Math.max(0,fined-paid))}</div></div></div>${readerFineBalancesHTML()}${fineForm}<section class="card"><h2>Einzelne Strafen</h2>${filteredFineListHTML(data.fines,false,cashier)}</section>`:''}${transferAccountHTML()}`;
 }
 // Nur einmal pro Benutzer: Der Server liefert ausschliesslich noch nicht bestaetigte Nachrichten.
 // Keine Nachrichtenliste und kein Menuepunkt fuer Leser.
@@ -684,6 +690,21 @@ function renderRefreshedReader(background){
  const draft=[...document.querySelectorAll('#content input:not([type="hidden"]),#content textarea')].some(input=>input.value!==input.defaultValue);
  if(!background||!focused&&!draft)renderApp();
 }
+async function saveCashierForm(form){
+ if(profile?.is_cashier!==true||busy)return;
+ const fd=new FormData(form),kind=form.dataset.cashierForm;
+ const cents=value=>{const raw=String(value||'').trim().replace(/\s/g,'').replace(/€/g,'').replace(',','.');if(!/^\d+(\.\d{1,2})?$/.test(raw))return NaN;const v=Number(raw)*100;return Number.isSafeInteger(Math.round(v))?Math.round(v):NaN;};
+ let action,payload={};
+ if(kind==='fine'){action='fine_create';payload={memberId:String(fd.get('memberId')||''),amountCents:cents(fd.get('amount')),reason:String(fd.get('reason')||'').trim()};if(!payload.memberId||!payload.reason||payload.reason.length>300||!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0)return alert('Bitte Mitglied, Grund und einen positiven Betrag eingeben.');}
+ else if(kind==='payment'){action='fine_payment';payload={fineId:String(fd.get('fineId')||''),amountCents:cents(fd.get('amount')),method:String(fd.get('method')||'Bar'),note:String(fd.get('note')||'').trim()};if(!payload.fineId||!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0)return alert('Bitte einen gültigen Zahlungsbetrag eingeben.');}
+ else if(kind==='cash-expense'){action='cash_expense';payload={amountCents:cents(fd.get('amount')),note:String(fd.get('note')||'').trim()};if(!Number.isSafeInteger(payload.amountCents)||payload.amountCents<=0||!payload.note||payload.note.length>180)return alert('Bitte Betrag und Verwendungszweck eingeben.');}
+ else if(kind==='cash-balance'){action='cash_balance';payload={balanceCents:cents(fd.get('balance')),note:String(fd.get('note')||'').trim()};if(!Number.isSafeInteger(payload.balanceCents)||payload.note.length>180)return alert('Bitte einen gültigen Kontostand eingeben.');}
+ else return;
+ busy=true;
+ try{const {error}=await cloud.rpc('fantastix_cashier_update',{p_action:action,p_payload:payload});if(error)throw error;await refresh();}
+ catch(e){alert('Kassenänderung nicht gespeichert: '+(e.message||String(e)));}
+ finally{busy=false;if(data)renderApp();}
+}
 async function refresh(options={}){
  if(!cloud||!user)return renderGate();
  const background=options.background===true,userId=user.id;
@@ -702,7 +723,7 @@ async function refresh(options={}){
 async function refreshReaderData(run,background){
  try{
   const [accountResult,pub,windows]=await Promise.all([
-   cloud.from('fantastix_reader_profiles').select('member_id,email,username').eq('user_id',run.userId).maybeSingle(),
+   cloud.from('fantastix_reader_profiles').select('member_id,email,username,is_cashier').eq('user_id',run.userId).maybeSingle(),
    cloud.from('fantastix_public').select('content,published_at').eq('id','main').eq('is_published',true).maybeSingle(),
    cloud.rpc('fantastix_reader_deadlines')
   ]);
@@ -711,11 +732,12 @@ async function refreshReaderData(run,background){
   profile=accountResult.data;
   if(!profile?.member_id){data=null;return renderGate();}
   if(pub.error)throw pub.error;if(windows.error)throw windows.error;
-  if(!pub.data?.content){dismissReaderInbox();data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
-  const d=pub.data.content;
+  if(!pub.data?.content&&!profile.is_cashier){dismissReaderInbox();data=null;$('#reader-app').hidden=true;$('#auth-gate').hidden=false;$('#auth-gate').innerHTML=empty('Noch keine Daten für Leser freigegeben.');return;}
+  const d=pub.data?.content||{sections:{members:false,meetings:false,excursions:false,absences:false,fines:false,cash:false},members:[],meetings:[],excursions:[],fines:[],payments:[],roles:[],cashbook:{balanceCents:0,transactions:[]}};
   if(!d.sections||!Array.isArray(d.members)||!Array.isArray(d.meetings)||!Array.isArray(d.fines)||!Array.isArray(d.payments))throw Error('Unbekanntes Datenformat.');
-  if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Eventsdaten.');d.excursions=d.excursions||[];
-  data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data.published_at||new Date().toISOString();
+  if(d.excursions!==undefined&&!Array.isArray(d.excursions))throw Error('Ungültige Eventsdaten.');d.excursions=d.excursions||[];d.roles=d.roles||[];
+  if(profile.is_cashier){const cashierData=await cloud.rpc('fantastix_cashier_read');if(cashierData.error)throw cashierData.error;Object.assign(d,cashierData.data||{});}
+  data=d;deadlines=new Map((windows.data||[]).map(r=>[r.meeting_id,r.deadline_at]));lastFetched=pub.data?.published_at||new Date().toISOString();
   renderRefreshedReader(background);
   // Independent optional reads run together; the menu is already usable.
   await Promise.all([
@@ -842,6 +864,7 @@ function askAbsenceReason(meetingId){
  dlg.showModal();
 }
 document.addEventListener('submit',e=>{
+ if(e.target.matches('form[data-cashier-form]')){e.preventDefault();saveCashierForm(e.target);return;}
  if(e.target.matches('form[data-organizer-meeting]')){e.preventDefault();saveOrganizerMeeting(e.target);return;}
  if(e.target.id==='reader-auth-form'){e.preventDefault();doAuth(e.target);}
  if(e.target.id==='reader-password-form'){e.preventDefault();changePassword(e.target);}
