@@ -59,7 +59,7 @@ BEGIN
     RAISE EXCEPTION 'Nur Administratoren.' USING ERRCODE = '42501';
   END IF;
 
-  IF pg_catalog.jsonb_typeof(p_links) <> 'array'
+  IF p_links IS NULL OR pg_catalog.jsonb_typeof(p_links) <> 'array'
      OR pg_catalog.jsonb_array_length(p_links) > 2500 THEN
     RAISE EXCEPTION 'Ungültige Benutzerliste.';
   END IF;
@@ -139,6 +139,26 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.fantastix_admin_set_links(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fantastix_admin_set_links(jsonb) TO authenticated;
+
+-- Bereits veröffentlichte Profile erhalten sofort die sichtbaren Rollenlabels.
+UPDATE public.fantastix_public fp
+SET content = pg_catalog.jsonb_set(
+      fp.content,
+      '{roles}',
+      coalesce((
+        SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+          'memberId', p.member_id,
+          'isAdmin', (a.user_id IS NOT NULL),
+          'isCashier', p.is_cashier
+        ))
+        FROM public.fantastix_reader_profiles p
+        LEFT JOIN public.fantastix_admin_users a ON a.user_id = p.user_id
+        WHERE p.member_id IS NOT NULL
+      ), '[]'::jsonb),
+      true
+    ),
+    published_at = now()
+WHERE fp.id = 'main' AND fp.content IS NOT NULL;
 
 -- Rollenprüfung und Kassenfunktionen liegen im nicht exponierten Schema private.
 CREATE OR REPLACE FUNCTION private.is_fantastix_cashier()
