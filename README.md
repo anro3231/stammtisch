@@ -4,6 +4,12 @@ Stammtisch-App als statische Website mit Admin- und Lesemodus sowie Supabase fü
 
 
 - Die Ranglisten enthalten eine eigene Kategorie **Jahres-Sieger** mit einem Pokalsymbol je Jahr. Die Jahressieger-Pokale erscheinen identisch im jeweiligen Mitgliedsprofil (Admin- und Leseransicht). Die historischen Sieger 2021–2025 sind vorbelegt; der Jahreswechsel-Versand ergänzt den Sieger des Vorjahres automatisch.
+## Version 4.2.6
+
+- Neue Rolle **Kassier**: Admins können sie in der Benutzerverwaltung vergeben. Kassierer können im Lesemodus Strafen erfassen und kassieren, den Kassenstand korrigieren und Ausgaben buchen. Die Berechtigungen werden serverseitig über Supabase-RPCs geprüft.
+- Admin- und Kassiererrollen erscheinen in Mitgliederprofilen. Die Statusanzeige für aktive bzw. archivierte Mitglieder wurde aus den Profilen entfernt.
+- Für die Datenbank einmalig `supabase/kassier-role.sql` im Supabase SQL Editor ausführen.
+
 ## Version 4.1.8
 
 - Die Teilnehmerzeilen im Admin-Stammtisch verwenden jetzt dieselbe Anordnung und Darstellung wie die Event-Abstimmung.
@@ -172,6 +178,8 @@ Die SQL-Dateien wurden aus dem aktuellen Repository-Stand entfernt. Bereits in S
 Diese technischen Anleitungen beschreiben einzelne Einführungsschritte. Hinweise auf noch nicht veröffentlichte Änderungen beziehen sich auf den damaligen Arbeitsstand, nicht auf den aktuellen Betriebsstatus. Einige dort genannte SQL-Dateien und Serverdateien fehlen im Repository.
 
 ## Tests
+
+Die Rollen- und Kassiereroberfläche lässt sich zusätzlich mit `node test-cashier-role.cjs` auf die wichtigsten Regressionen prüfen.
 
 Die Dateien `test-*.cjs` enthalten Prüfungen für Funktionen, Darstellung und Benachrichtigungen. Sie werden mit Node.js ausgeführt, je nach Test mit `jsdom`, `@electric-sql/pglite` oder `web-push`. Datenbanktests, die SQL-Dateien laden, lassen sich nach deren Entfernung nicht unmittelbar ausführen. Dafür müssen die passenden Migrationen aus der Git-Historie bzw. dem ursprünglichen Update-Paket wiederhergestellt werden; einige benötigte Migrationen und Serverdateien waren bereits zuvor nicht im Repository enthalten.
 
