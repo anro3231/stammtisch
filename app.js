@@ -48,7 +48,7 @@ const BASELINE_KEY = 'stammtischplus.cloud.baseline.v1';
 const SNAP_DB = 'stammtischplus-local-snapshots-v1';
 const SNAP_STORE = 'versions';
 const SNAP_LIMIT = 50;
-const APP_VERSION = window.FX_VERSION || "4.2.6";
+const APP_VERSION = window.FX_VERSION || "4.3.1";
 const DEFAULT = () => ({version:1,modifiedAt:new Date().toISOString(),members:[],meetings:[],excursions:[],fines:[],payments:[],annualWinners:[]});
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -373,8 +373,14 @@ function memberHistoryRow(meeting,status,dateText){
  return `<div class="item">${termDateBadge(meeting.date)}<div class="details"><strong>${esc(dateText)}</strong><small class="member-history-place">${uiSymbol('location','⌖')}<span>${esc(meeting.location||'Ohne Gasthaus')}</span></small></div><span class="chip ${status==='present'?'yes-chip':status==='absent'?'no-chip':'gray'}">${voteStatusSymbol(status)?voteStatusHTML(status):'Nicht erfasst'}</span></div>`;
 }
 function yearTrophy(year){return '🏆';}
-function annualWinnersHTML(){const winners=[...(data.annualWinners||[])].sort((a,b)=>a.year-b.year);return winners.length?`<div class="list">${winners.map(w=>`<div class="item annual-winner-row"><span class="annual-winner-trophy" aria-label="Pokal ${w.year}">${yearTrophy(w.year)}</span><strong class="annual-winner-year">${w.year}</strong><span class="annual-winner-names">${w.memberIds.map(id=>esc(member(id)?.name||'Unbekanntes Mitglied')).join(' & ')}</span></div>`).join('')}</div>`:'<p class="muted">Noch keine Jahressieger eingetragen.</p>';}
-function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>w.memberIds.includes(id)).sort((a,b)=>a.year-b.year);return `<section class="member-trophies"><h3 class="member-section-title">🏆 Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Pokale.</p>'}</section>`;}
+function annualWinnersHTML(){
+ const winners=[...(data.annualWinners||[])].sort((a,b)=>b.year-a.year);
+ const holders=leaders(null),leaderCount=holders[0]?.count||0;
+ const perpetual=leaderCount>0?'<article class="annual-trophy" aria-label="Ewige Rangliste"><div class="annual-cup" aria-hidden="true">🏆</div><div class="annual-year">EWIG</div><div class="annual-name">'+holders.map(m=>esc(m.name)).join(' & ')+'</div></article>':'';
+ const annual=winners.map(w=>'<article class="annual-trophy"><div class="annual-cup" aria-label="Pokal '+esc(w.year)+'">🏆</div><div class="annual-year">'+esc(w.year)+'</div><div class="annual-name">'+w.memberIds.map(id=>esc(member(id)?.name||'Unbekanntes Mitglied')).join(' & ')+'</div></article>').join('');
+ return '<section class="trophy-room"><div class="annual-trophy-grid">'+perpetual+annual+'</div></section>';
+}
+function annualMemberTrophiesHTML(id){const wins=[...(data.annualWinners||[])].filter(w=>w.memberIds.includes(id)).sort((a,b)=>a.year-b.year);return `<section class="member-trophies"><h3 class="member-section-title">Pokale</h3>${wins.length?`<div class="list">${wins.map(w=>`<div class="item"><span class="annual-winner-trophy" aria-label="Jahressieger-Pokal ${w.year}">${yearTrophy(w.year)}</span><div class="details"><strong>Jahressieger ${w.year}</strong></div></div>`).join('')}</div>`:'<p class="muted tiny">Noch keine Pokale.</p>'}</section>`;}
 function memberActivityHTML(id){
  const open=data.fines.filter(f=>f.memberId===id&&fineOpen(f)>0),all=pastSeriesMeetings(),recent=all.slice(0,memberHistoryLimits.get(id)||10);
  return `${memberProfileSummary({series:currentStreak(id),openCount:open.length,openAmount:money(open.reduce((sum,f)=>sum+fineOpen(f),0))})}${annualMemberTrophiesHTML(id)}<section class="member-history-section"><h3 class="member-section-title">${uiSymbol('calendar','▦')}Stammtisch-Historie</h3><p class="member-section-hint">${recent.length} von ${all.length} Stammtischen</p><div class="list member-history">${recent.map(m=>memberHistoryRow(m,effectiveAttendance(m,id)?.status,fmtDate(m.date))).join('')||'<p class="muted">Noch keine vergangenen Stammtische.</p>'}</div>${recent.length<all.length?`<button type="button" class="ghost history-more" data-action="member-history-more" data-id="${esc(id)}">Mehr laden ${uiSymbol('more','⋯')}</button>`:''}</section>`;
