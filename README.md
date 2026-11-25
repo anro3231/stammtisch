@@ -179,6 +179,8 @@ Diese technischen Anleitungen beschreiben einzelne Einführungsschritte. Hinweis
 
 ## Tests
 
+Die Rollen- und Kassiereroberfläche lässt sich zusätzlich mit `node test-cashier-role.cjs` auf die wichtigsten Regressionen prüfen.
+
 Die Dateien `test-*.cjs` enthalten Prüfungen für Funktionen, Darstellung und Benachrichtigungen. Sie werden mit Node.js ausgeführt, je nach Test mit `jsdom`, `@electric-sql/pglite` oder `web-push`. Datenbanktests, die SQL-Dateien laden, lassen sich nach deren Entfernung nicht unmittelbar ausführen. Dafür müssen die passenden Migrationen aus der Git-Historie bzw. dem ursprünglichen Update-Paket wiederhergestellt werden; einige benötigte Migrationen und Serverdateien waren bereits zuvor nicht im Repository enthalten.
 
 Beispiel für die Prüfungen der aktuellen Kassa und des Designs bei installiertem `jsdom`:
