@@ -529,8 +529,10 @@ AS $function$
 $function$;
 
 GRANT USAGE ON SCHEMA private TO authenticated;
-GRANT EXECUTE ON FUNCTION private.is_fantastix_cashier() TO authenticated;
-GRANT EXECUTE ON FUNCTION private.fantastix_cash_balance(jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION private.is_fantastix_cashier() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION private.fantastix_cash_balance(jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION private.fantastix_cashier_read_impl() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION private.fantastix_cashier_update_impl(text, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION private.fantastix_cashier_read_impl() TO authenticated;
 GRANT EXECUTE ON FUNCTION private.fantastix_cashier_update_impl(text, jsonb) TO authenticated;
 
