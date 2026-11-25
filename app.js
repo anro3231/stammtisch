@@ -358,8 +358,13 @@ function strongestStreakHTML(){
  const best=Math.max(0,...rows.map(m=>m.streak)),leaders=rows.filter(m=>m.streak===best).sort(byMemberNo);
  return `<section class="card streak-card"><h2>Stärkste Stammtischserie ${uiSymbol('flame','🔥')}</h2><div class="streak-value">${best}</div><p class="muted tiny">Stammtische in Folge</p>${best?`<div class="leader-list">${leaders.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div>`:'<p class="muted">Aktuell führt kein Mitglied eine Serie.</p>'}</section>`;
 }
+function memberRoleBadgesHTML(m){
+ const roles=readerProfiles.filter(p=>p.member_id===m.id);
+ const admin=roles.some(p=>p.is_admin===true),cashier=roles.some(p=>p.is_cashier===true);
+ return (admin?'<span class="chip member-profile-role">Admin</span>':'')+(cashier?'<span class="chip member-profile-role">Kassier</span>':'');
+}
 function memberProfileHeader(m,photo,number,lastSeen){
- return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}<span class="member-profile-status ${m.active===false?'is-archived':''}">${m.active===false?'Archiviertes Mitglied':'Aktives Mitglied'}</span></div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p></header>`;
+ return `<header class="member-profile"><div class="member-profile-top">${photo}<div class="member-profile-identity"><h2 class="member-profile-name">${esc(m.name)}</h2><div class="member-profile-tags">${number!==null&&number!==undefined&&number!==''?`<span class="member-profile-number">${uiSymbol('members','♙')}Nr. ${esc(number)}</span>`:''}${memberRoleBadgesHTML(m)}</div></div></div><p class="member-profile-lastseen">${uiSymbol('clock','◷')}<span>${esc(lastSeen)}</span></p></header>`;
 }
 function memberProfileSummary({series,seriesAvailable=true,openCount,openAmount,finesAvailable=true}){
  return `<div class="member-summary"><div class="metric member-stat"><small class="member-stat-label">Aktuelle Stammtischserie</small><div class="member-stat-value"><div class="value">${esc(seriesAvailable?series:'–')}</div>${uiSymbol('flame','🔥')}</div><small>${seriesAvailable?'Stammtische in Folge':'Stammtische nicht freigegeben'}</small></div><div class="metric member-stat"><small class="member-stat-label">Offene Strafen</small><div class="member-stat-value"><div class="value">${esc(finesAvailable?(openCount??0):'–')}</div>${uiSymbol('fines','€')}</div><small>${finesAvailable?esc(openAmount)+' offen':'Strafen nicht freigegeben'}</small></div></div>`;
@@ -826,22 +831,23 @@ async function readerAccess(){
  catch(e){alert('Benutzer konnten nicht geladen werden: '+e.message);return;}
  const people=readerProfiles;
  modal('Benutzer und Mitglieder',`<p class="hint">Alle registrierten Konten, auch Administratoren. Pro Mitglied ist ein Konto möglich.</p><form data-form="reader-access">
- ${people.length?people.map(p=>`<div class="reader-admin-row"><div><strong>${esc(p.username||p.email||p.user_id)}</strong>${p.is_admin?'<span class="chip" style="margin-left:6px">Admin</span>':''}<small> ${p.member_id?'Verknüpft':'Noch nicht zugeordnet'}</small></div><select name="reader-${esc(p.user_id)}" aria-label="Zuordnung ${esc(p.username||p.email||p.user_id)}"><option value="">Nicht zugeordnet</option>${[...data.members].sort(byMemberNo).map(m=>`<option value="${esc(m.id)}" ${p.member_id===m.id?'selected':''}>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</option>`).join('')}</select></div>`).join(''):'<div class="notice">Noch keine Konten registriert.</div>'}
+ ${people.length?people.map(p=>`<div class="reader-admin-row"><div><strong>${esc(p.username||p.email||p.user_id)}</strong>${p.is_admin?'<span class="chip" style="margin-left:6px">Admin</span>':''}<small> ${p.member_id?'Verknüpft':'Noch nicht zugeordnet'}</small><label class="reader-admin-cashier"><input type="checkbox" name="cashier-${esc(p.user_id)}" ${p.is_cashier?'checked':''} ${p.is_admin?'disabled':''}> Kassier</label></div><select name="reader-${esc(p.user_id)}" aria-label="Zuordnung ${esc(p.username||p.email||p.user_id)}"><option value="">Nicht zugeordnet</option>${[...data.members].sort(byMemberNo).map(m=>`<option value="${esc(m.id)}" ${p.member_id===m.id?'selected':''}>${memberNo(m)!==null?'Nr. '+memberNo(m)+' · ':''}${esc(m.name)}</option>`).join('')}</select></div>`).join(''):'<div class="notice">Noch keine Konten registriert.</div>'}
  ${people.length?footer('Alle Zuordnungen speichern'):'<button class="ghost" type="button" data-action="close">Schließen</button>'}</form>`);
 }
 async function saveReaderAccess(fd){
  if(!cloudReady)return alert('Cloud-Verbindung erforderlich.');
- const selections=readerProfiles.map(p=>({user_id:p.user_id,member_id:String(fd.get('reader-'+p.user_id)||'')||null}));
+ const selections=readerProfiles.map(p=>({user_id:p.user_id,member_id:String(fd.get('reader-'+p.user_id)||'')||null,is_cashier:!p.is_admin&&fd.has('cashier-'+p.user_id)}));
  const used=new Set();
  for(const r of selections){
    if(r.member_id&&!member(r.member_id))return alert('Unbekanntes Mitglied.');
+   if(r.is_cashier&&!r.member_id)return alert('Ein Kassier muss zuerst einem Mitglied zugeordnet werden.');
    if(r.member_id&&used.has(r.member_id))return alert('Jedes Mitglied darf nur einem Konto zugeordnet sein.');
    if(r.member_id)used.add(r.member_id);
  }
  try{
    const {error}=await cloudClient.rpc('fantastix_admin_set_links',{p_links:selections});
    if(error)throw error;
-   await reloadReaderAdminData();closeModal();alert('Benutzerzuordnungen gespeichert.');
+   await reloadReaderAdminData();if(publicPublished)await publishPublic(false);closeModal();alert('Benutzerzuordnungen gespeichert.');
  }catch(e){alert('Zuordnung fehlgeschlagen: '+e.message+' (Bitte Liste neu laden.)');}
 }
 function voteSettingsForm(){modal('Abstimmungsfrist & Erinnerung',`<form data-form="vote-settings"><div class="field"><label for="vote-hours">Frist: Stunden vor Beginn des Stammtischs</label><input id="vote-hours" name="hours" type="number" min="0" max="720" step="1" value="${voteDeadlineHours()}" required></div><p class="hint">24 = ein Tag vorher · 0 = bis zum Beginn. Maßgeblich ist die Uhrzeit des Stammtischs (Wien).</p><div class="separator"></div><div class="field"><label style="display:flex;align-items:center;gap:9px"><input name="reminderEnabled" type="checkbox" ${voteReminderEnabled()?'checked':''}>Automatische Abstimmungserinnerung</label></div><div class="field"><label for="reminder-hours">Erinnerung: Stunden vor Ablauf der Frist</label><input id="reminder-hours" name="reminderHours" type="number" min="1" max="720" step="1" value="${voteReminderHours()}" required></div><p class="hint">Einmal pro Stammtisch an alle freigeschalteten aktiven Mitglieder, auch wenn sie schon abgestimmt haben. Push erhalten Geräte mit aktivierten Mitteilungen. Beispiel: Stammtisch Freitag 19 Uhr, Frist 24 Stunden, Erinnerung 24 Stunden → Erinnerung Mittwoch 19 Uhr.</p>${footer('Einstellungen speichern')}</form>`);}
@@ -1053,7 +1059,8 @@ function publicSnapshot(opts){
  const payments=allowFines?data.payments.map(p=>({id:p.id,fineId:p.fineId,amountCents:n(p.amountCents),method:p.method||'Bar'})):[];
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyDay:cash().monthlyDay||1,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
  const excursions=opts.excursions?(data.excursions||[]).map(x=>({id:x.id,title:x.title,date:x.date||'',endDate:x.endDate||'',time:x.time||'',location:x.location||'',notes:x.notes||'',organizerIds:(x.organizerIds||[]).filter(id=>!!member(id)),organizerOther:x.organizerOther||'',completed:x.completed===true,voteDeadlineAt:x.voteDeadlineAt||''})):[];
- return {schemaVersion:4,rsvpCutoffHours:voteDeadlineHours(),publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,excursions:!!opts.excursions,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,excursions,fines,payments,cashbook};
+ const roles=readerProfiles.filter(p=>p.member_id).map(p=>({memberId:p.member_id,isAdmin:p.is_admin===true,isCashier:p.is_cashier===true}));
+ return {schemaVersion:4,rsvpCutoffHours:voteDeadlineHours(),publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,excursions:!!opts.excursions,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,excursions,fines,payments,cashbook,roles};
 }
 async function publishPublic(ask=true){
  if(publishing)return;
