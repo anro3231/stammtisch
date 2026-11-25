@@ -320,3 +320,9 @@ dialog.fx-inbox-dialog{position:fixed;inset:0;width:min(600px,calc(100% - 24px))
 
 /* Compact upcoming/past switch for meeting and event lists. */
 .term-list-filters{margin:0 0 12px;padding:0 2px}
+/* Stammtisch-Filter und Neu-Button bleiben auf breiten Ansichten in einer Zeile. */
+.term-action-filter-row{display:flex;align-items:center;justify-content:flex-start;gap:12px;flex-wrap:nowrap;margin:14px 0}
+.term-action-filters{flex:0 1 auto;min-width:0}
+.term-action-filters .ranking-filters{margin:0}
+.term-action-filter-row>.button{flex:0 0 auto;white-space:nowrap}
+@media(max-width:520px){.term-action-filter-row{flex-wrap:wrap;row-gap:8px}}
