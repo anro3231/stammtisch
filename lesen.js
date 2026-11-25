@@ -200,7 +200,15 @@ function dashboard(){
  const completed=data.meetings.filter(m=>m.date<today()).sort((a,b)=>b.date.localeCompare(a.date));
  const next=[...data.meetings].filter(m=>m.date>=today()).sort((a,b)=>a.date.localeCompare(b.date))[0];
  const days=next?daysUntil(next.date):null;
- const yr=section('members')?leaders(currentYear()):[],all=section('members')?leaders(null):[];
+ // Dashboard-Ranglisten ausschließlich aus den Teilnahme-Ranglisten berechnen.
+ // Die Serien-Auswertung (currentStreak/strongestStreakHTML) ist davon getrennt.
+ const dashboardLeaders=y=>{
+  if(!section('members'))return [];
+  const rows=ranks(y);
+  const top=rows[0]?.count||0;
+  return top>0?rows.filter(m=>m.count===top):[];
+ };
+ const yr=dashboardLeaders(currentYear()),all=dashboardLeaders(null);
  const pending=section('fines')?data.fines.reduce((s,f)=>s+n(f.amountCents),0)-data.payments.reduce((s,p)=>s+n(p.amountCents),0):null;
  const leaderHTML=lst=>lst.length?`<div class="leader-list">${lst.map(m=>`<span>${esc(m.name)}</span>`).join('')}</div><small>${lst[0].count} Teilnahmen</small>`:'<div class="value">–</div>';
  return `${heading('Servus'+(member(profile?.member_id)?.name?', '+member(profile.member_id).name:''))}<div class="metric-grid dashboard-v36">
