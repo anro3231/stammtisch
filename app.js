@@ -1060,7 +1060,8 @@ function publicSnapshot(opts){
  const cashbook=allowCash?{balanceCents:accountBalance(),monthlyAmountCents:cash().monthlyAmountCents,monthlyDay:cash().monthlyDay||1,monthlyStartMonth:cash().monthlyStartMonth,transactions:cashHistory().filter(t=>allowFines||t.type!=='payment').map(t=>({id:t.id,type:t.type,month:t.month||'',note:t.note||'',amountCents:t.amountCents,date:t.date||''}))}:null;
  const excursions=opts.excursions?(data.excursions||[]).map(x=>({id:x.id,title:x.title,date:x.date||'',endDate:x.endDate||'',time:x.time||'',location:x.location||'',notes:x.notes||'',organizerIds:(x.organizerIds||[]).filter(id=>!!member(id)),organizerOther:x.organizerOther||'',completed:x.completed===true,voteDeadlineAt:x.voteDeadlineAt||''})):[];
  const roles=readerProfiles.filter(p=>p.member_id).map(p=>({memberId:p.member_id,isAdmin:p.is_admin===true,isCashier:p.is_cashier===true}));
- return {schemaVersion:4,rsvpCutoffHours:voteDeadlineHours(),publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,excursions:!!opts.excursions,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,excursions,fines,payments,cashbook,roles};
+ const annualWinners=allowMembers?(data.annualWinners||[]).map(w=>({year:w.year,memberIds:w.memberIds.filter(id=>data.members.some(m=>m.id===id))})).filter(w=>w.memberIds.length):[];
+ return {schemaVersion:4,rsvpCutoffHours:voteDeadlineHours(),publishedAt:new Date().toISOString(),sections:{members:allowMembers,meetings:allowMeetings,excursions:!!opts.excursions,absences:allowAbsences,fines:allowFines,cash:allowCash},members,meetings,excursions,fines,payments,cashbook,roles,annualWinners};
 }
 async function publishPublic(ask=true){
  if(publishing)return;
