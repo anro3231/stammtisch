@@ -311,7 +311,7 @@ function excursions(){
  if(readerEntry?.kind==='excursion'&&(data.excursions||[]).some(x=>x.id===readerEntry.id))return excursionDetails(readerEntry.id);
  const list=data.excursions||[],items=(excursionListFilter==='upcoming'?list.filter(x=>!eventIsPast(x)).sort(upcomingTermOrder):list.filter(eventIsPast).sort(pastTermOrder)),groups=[{title:excursionListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=x=>`<button type="button" class="reader-entry" data-reader-excursion="${esc(x.id)}" aria-label="Event ${esc(x.title)} öffnen">${termEntryBody({date:x.date,title:x.title,dateText:tripDateLabel({...x,time:''}),time:x.time,location:x.location||'Ort noch offen',organizers:'Organisatoren: '+tripOrganizers(x),summary:readerCountSummary(excursionCount(x.id))})}</button>`;
- return `${heading('Events')}<div class="toolbar"><button class="button" type="button" data-member-event-new>＋ Event planen</button></div>${termFilterControls('excursion',excursionListFilter)}${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}${termListGroups(groups,entry,'Noch keine Events eingetragen.')}`;
+ return `${heading('Events')}<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:14px 0"><div style="margin:0">${termFilterControls('excursion',excursionListFilter)}</div><button class="button" type="button" data-member-event-new>＋ Event planen</button></div>${excursionVoteError?`<div class="notice warning">${esc(excursionVoteError)}</div>`:''}${termListGroups(groups,entry,'Noch keine Events eingetragen.')}`;
 }
 function openReaderEntry(kind,id){
  const target=kind==='member'?'members':kind==='meeting'?'meetings':'excursions';
