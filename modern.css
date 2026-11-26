@@ -333,3 +333,10 @@ dialog.fx-inbox-dialog{position:fixed;inset:0;width:min(600px,calc(100% - 24px))
 .term-action-filter-row .term-action-filters .ranking-filters{display:flex!important;flex-wrap:nowrap!important;align-items:center;margin:0!important}
 .term-action-filter-row>button.button{display:inline-flex!important;flex:0 0 auto!important;width:auto!important;min-width:max-content;max-width:none!important;margin:0!important;white-space:nowrap!important}
 @media(max-width:520px){.term-action-filter-row{flex-wrap:wrap!important}.term-action-filter-row .term-action-filters .ranking-filters{flex-wrap:wrap!important}}
+
+/* Einheitliche kompakte Plus-Aktionen neben den Listenfiltern. */
+.term-action-filter-row{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;flex-wrap:nowrap!important;gap:10px!important;width:100%;min-width:0;margin:14px 0!important}
+.term-action-filter-row .term-action-filters{display:flex!important;flex:0 1 auto!important;align-items:center;min-width:0;width:auto!important}
+.term-action-filter-row .term-action-filter-row .ranking-filters{display:flex!important;flex-wrap:nowrap!important;align-items:center;margin:0!important}
+.term-action-filter-row>.term-add-button{display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 42px!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:42px!important;min-height:42px!important;margin:0!important;padding:0!important;border-radius:50%!important;font-size:25px!important;font-weight:500!important;line-height:1!important;white-space:nowrap!important}
+@media(max-width:520px){.term-action-filter-row{flex-wrap:nowrap!important;gap:8px!important}.term-action-filter-row .term-action-filters .ranking-filters{flex-wrap:nowrap!important}.term-action-filter-row .term-action-filters{overflow-x:auto}}
