@@ -336,7 +336,7 @@ function homeHTML(){
   </section>
   <section class="card"><h2>Letzte 3 Stammtische</h2>${latest.length?`<div class="list">${latest.map(m=>`<div class="item"><div class="avatar">${String(new Date(m.date+'T12:00:00').getDate()).padStart(2,'0')}</div><div class="details"><strong>${fmtDate(m.date)}</strong><small>${esc(m.location||'Ohne Gasthaus')} · ${data.members.filter(person=>effectiveAttendance(m,person.id)?.status==='present').length} anwesend</small></div><button class="smallbtn" data-action="meeting-edit" data-id="${m.id}">Öffnen</button></div>`).join('')}</div>`:empty('📅','Noch keine Stammtische')}</section>
   <section class="card next-card excursion-preview"><div class="row"><h2>Nächster Event</h2></div>
-   ${nextExcursion()?`${nextEventDetails(nextExcursion())}<button class="button dashboard-open" data-page="excursions">Event öffnen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new">+ Event planen</button>`}
+   ${nextExcursion()?`${nextEventDetails(nextExcursion())}<button class="button dashboard-open" data-page="excursions">Event öffnen →</button>`:`<p class="muted">Noch kein Event geplant.</p><button class="ghost" data-action="excursion-new" aria-label="Event planen" title="Event planen">+</button>`}
   </section>${strongestStreakHTML()}`;
 }
 async function loadOnlinePresenceAdmin(){
@@ -418,7 +418,7 @@ function meetingsHTML(){
  const items=(meetingListFilter==='upcoming'?data.meetings.filter(m=>m.date>=today()).sort(upcomingTermOrder):data.meetings.filter(m=>m.date<today()).sort(pastTermOrder));
  const groups=[{title:meetingListFilter==='upcoming'?'Anstehend':'Vergangen',items}];
  const entry=m=>{const entries=data.members.map(p=>effectiveAttendance(m,p.id)).filter(Boolean);return `<button type="button" class="reader-entry" data-action="meeting-edit" data-id="${esc(m.id)}" aria-label="Stammtisch am ${esc(fmtDate(m.date))} öffnen">${termEntryBody({date:m.date,title:fmtDate(m.date),time:m.time||'18:30',location:m.location||'Gasthaus noch offen',organizers:'Organisator: '+(member(m.organizerId)?.name||'Noch offen'),summary:adminCountSummary({yes:entries.filter(x=>x.status==='present').length,unsure:entries.filter(x=>x.status==='unsure').length,no:entries.filter(x=>x.status==='absent').length})})}</button>`;};
- return `${pageHead('','Stammtische','')}<div class="term-action-filter-row"><div class="term-action-filters">${termFilterControls('meeting',meetingListFilter)}</div><button class="button" data-action="meeting-new" aria-label="Neuen Stammtisch anlegen" title="Neuer Stammtisch">+</button></div>${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
+ return `${pageHead('','Stammtische','')}<div class="term-action-filter-row"><div class="term-action-filters">${termFilterControls('meeting',meetingListFilter)}</div><button class="button term-add-button" data-action="meeting-new" aria-label="Neuen Stammtisch anlegen" title="Neuer Stammtisch">+</button></div>${termListGroups(groups,entry,'Noch keine Stammtische.')}`;
 }
 function calendarHTML(){return `${pageHead('','Kalender','Stammtische, Events und Geburtstage.')}${window.FantastiXCalendar.render({...data,birthdays:birthdays.map(b=>({...b,name:member(b.member_id)?.name||'Mitglied'}))},calendarMonth,calendarSelected,true)}`;}
 function termStatusHTML(label){const kind={'Heute':'today','Geplant':'planned','Vergangen':'past','Abgeschlossen':'closed','Läuft':'live','In Planung':'draft'}[label]||'draft';return `<span class="chip meeting-status status-${kind}">${esc(label)}</span>`;}
