@@ -1,2 +1,1 @@
-window.FX_VERSION='4.3.3';
-window.FANTASTIX_VERSION=window.FX_VERSION;
+window.FX_VERSION='4.3.4';
