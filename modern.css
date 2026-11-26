@@ -340,3 +340,11 @@ dialog.fx-inbox-dialog{position:fixed;inset:0;width:min(600px,calc(100% - 24px))
 .term-action-filter-row .term-action-filters .ranking-filters{display:flex!important;flex-wrap:nowrap!important;align-items:center;margin:0!important}
 .term-action-filter-row>.term-add-button{display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 42px!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:42px!important;min-height:42px!important;margin:0!important;padding:0!important;border-radius:50%!important;font-size:25px!important;font-weight:500!important;line-height:1!important;white-space:nowrap!important}
 @media(max-width:520px){.term-action-filter-row{flex-wrap:nowrap!important;gap:8px!important}.term-action-filter-row .term-action-filters .ranking-filters{flex-wrap:nowrap!important}.term-action-filter-row .term-action-filters{overflow-x:auto}}
+
+
+/* 4.3.6: Plus-Aktionen in Admin und Lesemodus immer ganz rechts neben den Filtern. */
+.term-action-filter-row{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important;flex-wrap:nowrap!important;gap:10px!important;width:100%!important;min-width:0!important}
+.term-action-filter-row>.term-action-filters{display:flex!important;flex:1 1 auto!important;min-width:0!important;width:auto!important;margin-right:auto!important}
+.term-action-filter-row>.term-action-filters .ranking-filters{display:flex!important;align-items:center!important;flex-wrap:nowrap!important;margin:0!important}
+.term-action-filter-row>.term-add-button{display:inline-flex!important;flex:0 0 42px!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:42px!important;min-height:42px!important;margin:0 0 0 auto!important;padding:0!important;align-items:center!important;justify-content:center!important;border-radius:50%!important;font-size:25px!important;font-weight:500!important;line-height:1!important;white-space:nowrap!important}
+@media(max-width:520px){.term-action-filter-row{flex-wrap:nowrap!important}.term-action-filter-row>.term-action-filters{overflow-x:auto!important;overflow-y:hidden!important}.term-action-filter-row>.term-action-filters .ranking-filters{flex-wrap:nowrap!important}}
